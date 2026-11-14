@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -29,11 +30,12 @@ var files embed.FS
 var sortStrings = sort.Strings
 
 type server struct {
-	db     *pgxpool.Pool
-	roots  map[int64]bool
-	token  string
-	dev    bool
-	appURL string
+	db      *pgxpool.Pool
+	roots   map[int64]bool
+	token   string
+	dev     bool
+	appURL  string
+	updates *updateHub
 }
 type problem struct {
 	Code    int
@@ -87,7 +89,7 @@ func main() {
 	if _, err = db.Exec(ctx, string(schema)); err != nil {
 		log.Fatal(err)
 	}
-	s := &server{db: db, roots: map[int64]bool{}, token: os.Getenv("BOT_TOKEN"), dev: os.Getenv("DEV_AUTH") == "true", appURL: os.Getenv("APP_URL")}
+	s := &server{db: db, roots: map[int64]bool{}, token: os.Getenv("BOT_TOKEN"), dev: os.Getenv("DEV_AUTH") == "true", appURL: os.Getenv("APP_URL"), updates: newUpdateHub()}
 	for _, v := range strings.Split(os.Getenv("ROOT_TELEGRAM_IDS"), ",") {
 		id, e := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
 		if e == nil && id > 0 {
@@ -110,6 +112,7 @@ func main() {
 	})
 	mux.HandleFunc("GET /api/config", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]bool{"dev_auth": s.dev}) })
 	mux.HandleFunc("GET /api/state", s.auth(s.state))
+	mux.HandleFunc("GET /api/updates", s.auth(s.streamUpdates))
 	mux.HandleFunc("POST /api/command", s.auth(s.command))
 	dist := env("WEB_DIST", "../web/dist")
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -130,8 +133,9 @@ func main() {
 		w.Header().Set("Cache-Control", "no-store")
 		mux.ServeHTTP(w, r)
 	})
-	srv := &http.Server{Addr: env("LISTEN_ADDR", ":8080"), Handler: h, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32768}
+	srv := &http.Server{Addr: env("LISTEN_ADDR", ":8080"), Handler: h, BaseContext: func(net.Listener) context.Context { return ctx }, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32768}
 	go s.worker(ctx)
+	go s.listenUpdates(ctx)
 	go func() {
 		<-ctx.Done()
 		c, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -295,6 +299,10 @@ func (s *server) command(w http.ResponseWriter, r *http.Request, uid int64) {
 	response = json.RawMessage(`{"ok":true}`)
 	if _, e = tx.Exec(ctx, "INSERT INTO audit(actor_id,action,payload) VALUES($1,$2,$3)", uid, c.Kind, body); e == nil {
 		_, e = tx.Exec(ctx, "INSERT INTO requests(user_id,key,body_hash,response) VALUES($1,$2,$3,$4)", uid, key, hash, []byte(response))
+	}
+	if e == nil {
+		// PostgreSQL delivers NOTIFY only after commit, including to other app instances.
+		_, e = tx.Exec(ctx, "SELECT pg_notify('labturn_updates',current_schema())")
 	}
 	if e == nil {
 		e = tx.Commit(ctx)

@@ -5,6 +5,9 @@ declare global {
         initData: string;
         ready: () => void;
         expand: () => void;
+        isActive?: boolean;
+        onEvent?: (name: string, callback: () => void) => void;
+        offEvent?: (name: string, callback: () => void) => void;
         requestWriteAccess?: (callback: (granted: boolean) => void) => void;
       };
     };
@@ -13,16 +16,20 @@ declare global {
 export function devUser() {
   return localStorage.getItem("dev-user") || "1001";
 }
-export async function request<T>(
-  path: string,
-  body?: unknown,
-  key?: string,
-): Promise<T> {
+export function authHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     Authorization: "tma " + (window.Telegram?.WebApp.initData || ""),
   };
   if (localStorage.getItem("dev-enabled") === "true")
     headers["X-Dev-User"] = devUser();
+  return headers;
+}
+export async function request<T>(
+  path: string,
+  body?: unknown,
+  key?: string,
+): Promise<T> {
+  const headers = authHeaders();
   if (body) {
     headers["Content-Type"] = "application/json";
     headers["Idempotency-Key"] = key || crypto.randomUUID();

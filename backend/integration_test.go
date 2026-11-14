@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -404,5 +405,86 @@ func TestIntegration(t *testing.T) {
 		restarted.deliver(ctx, client)
 		assert(calls == 2, "delivered notification repeated or retry missing")
 		assert(count("SELECT count(*) FROM notifications WHERE id=$1 AND delivered_at IS NOT NULL AND attempts=2", id) == 1, "successful delivery not persisted")
+	})
+	t.Run("SSE committed changes across instances and reconnect", func(t *testing.T) {
+		// Commands use the original server. A separate instance owns the stream.
+		peer := &server{db: db, dev: true, updates: newUpdateHub()}
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		signals, unsubscribe := peer.updates.subscribe()
+		defer unsubscribe()
+		done := make(chan struct{})
+		go func() { defer close(done); peer.listenUpdates(ctx) }()
+		defer func() { cancel(); <-done }()
+		select {
+		case <-signals:
+		case <-time.After(5 * time.Second):
+			t.Fatal("LISTEN did not become ready")
+		}
+		streamServer := httptest.NewServer(peer.auth(peer.streamUpdates))
+		defer streamServer.Close()
+		openStream := func() (*http.Response, *bufio.Reader, context.CancelFunc) {
+			t.Helper()
+			streamCtx, stop := context.WithTimeout(ctx, 5*time.Second)
+			r, _ := http.NewRequestWithContext(streamCtx, "GET", streamServer.URL, nil)
+			r.Header.Set("X-Dev-User", "3001")
+			response, err := http.DefaultClient.Do(r)
+			if err != nil {
+				stop()
+				t.Fatal(err)
+			}
+			if response.StatusCode != 200 || response.Header.Get("Content-Type") != "text/event-stream" {
+				t.Fatalf("invalid stream: %d", response.StatusCode)
+			}
+			return response, bufio.NewReader(response.Body), stop
+		}
+		readChange := func(reader *bufio.Reader) {
+			t.Helper()
+			for _, want := range []string{"event: change\n", "data: {}\n", "\n"} {
+				got, err := reader.ReadString('\n')
+				if err != nil || got != want {
+					t.Fatalf("stream frame %q; expected %q; error %v", got, want, err)
+				}
+			}
+		}
+		response, reader, stop := openStream()
+		defer response.Body.Close()
+		defer stop()
+		readChange(reader)
+		v := 5
+		c := command{Kind: "grade", UserID: 3096, LabID: 2, Value: &v}
+		status, _ := call(2001, c, "sse-committed-grade")
+		assert(status == 200, "grade command failed")
+		readChange(reader)
+		assert(count("SELECT value FROM grades WHERE student_id=3096 AND lab_id=2") == 5, "signal preceded committed data")
+		select {
+		case <-signals:
+		case <-time.After(time.Second):
+			t.Fatal("missing invalidation")
+		}
+		status, _ = call(2001, c, "sse-committed-grade")
+		assert(status == 200, "replay failed")
+		status, _ = call(2001, c, "sse-rejected-grade")
+		assert(status == 409, "stale write accepted")
+		select {
+		case <-signals:
+			t.Fatal("replay or rollback emitted invalidation")
+		case <-time.After(150 * time.Millisecond):
+		}
+		stop()
+		response.Body.Close()
+		response2, reader2, stop2 := openStream()
+		defer response2.Body.Close()
+		defer stop2()
+		readChange(reader2) // Reconnect always requests a current authorized snapshot.
+		peer.updates.publish(false)
+		line, err := reader2.ReadString('\n')
+		assert(err == nil && line == "event: unavailable\n", "listener outage did not enable fallback")
+		prod := &server{db: db, updates: peer.updates}
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/updates", nil)
+		r.Header.Set("X-Dev-User", "1001")
+		prod.auth(prod.streamUpdates)(w, r)
+		assert(w.Code == 401, "SSE accepted forged production authentication")
 	})
 }

@@ -2,6 +2,9 @@ import { test, expect, Page } from "@playwright/test";
 import { State } from "../src/types";
 
 async function gradebook(page: Page) {
+  // These scenarios deliberately exercise fallback polling and delayed reads.
+  // Real streaming is covered separately in realtime.spec.ts.
+  await page.route("**/api/updates", (route) => route.abort());
   await page.addInitScript(() => localStorage.setItem("dev-user", "2001"));
   await page.goto("/");
   await page

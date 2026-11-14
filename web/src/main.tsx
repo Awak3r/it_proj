@@ -27,6 +27,7 @@ import { request, devUser } from "./api";
 import { State, Event, Entry, Lab, strategies, statuses } from "./types";
 import "./style.css";
 import { useTelegramTheme } from "./theme";
+import { startLiveUpdates } from "./live";
 type Cmd = Record<string, unknown>;
 type Field = {
   name: string;
@@ -111,17 +112,32 @@ function App() {
     return promise;
   }
   useEffect(() => {
+    let disposed = false;
+    let stopUpdates: (() => void) | undefined;
+    let configRetry: ReturnType<typeof setTimeout> | undefined;
     window.Telegram?.WebApp.ready();
     window.Telegram?.WebApp.expand();
-    request<{ dev_auth: boolean }>("config")
-      .then((c) => {
-        setDev(c.dev_auth);
-        localStorage.setItem("dev-enabled", String(c.dev_auth));
-        refresh();
-      })
-      .catch(() => setError("Сервер недоступен"));
-    const t = setInterval(refresh, 3000);
-    return () => clearInterval(t);
+    const initialize = () =>
+      request<{ dev_auth: boolean }>("config")
+        .then((c) => {
+          if (disposed) return;
+          setError("");
+          setDev(c.dev_auth);
+          localStorage.setItem("dev-enabled", String(c.dev_auth));
+          refresh();
+          stopUpdates = startLiveUpdates(refresh);
+        })
+        .catch(() => {
+          if (disposed) return;
+          setError("Сервер недоступен");
+          configRetry = setTimeout(initialize, 3000);
+        });
+    void initialize();
+    return () => {
+      disposed = true;
+      clearTimeout(configRetry);
+      stopUpdates?.();
+    };
   }, []);
   useEffect(() => {
     if (notice) {
