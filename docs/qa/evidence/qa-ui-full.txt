@@ -1,0 +1,19 @@
+
+> labqueue@0.1.0 test
+> playwright test
+
+
+Running 8 tests using 1 worker
+
+(node:15486) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/app.spec.ts:7:1 › student desktop navigation and grade permissions (1.8s)
+  ✓  2 tests/app.spec.ts:42:1 › student mobile has no horizontal page overflow (872ms)
+  ✓  3 tests/app.spec.ts:99:1 › teacher grade autosave keeps student in queue and finish is separate (1.5s)
+  ✓  4 tests/app.spec.ts:133:1 › student cannot select teacher to gain privileges (782ms)
+  ✓  5 tests/app.spec.ts:142:1 › root has management and a single manual shuffle (1.2s)
+  ✓  6 tests/recovery.spec.ts:14:1 › stale snapshot cannot roll back a saved grade (3.8s)
+  ✓  7 tests/recovery.spec.ts:58:1 › lost response retries the same grade without a second write (1.4s)
+  ✓  8 tests/recovery.spec.ts:161:1 › failed refresh keeps a committed grade pending until retry confirms it (1.0s)
+
+  8 passed (13.8s)

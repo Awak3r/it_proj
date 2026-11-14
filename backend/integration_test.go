@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,10 @@ import (
 	"testing"
 	"time"
 )
+
+type testTransport func(*http.Request) (*http.Response, error)
+
+func (f testTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func TestIntegration(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
@@ -278,5 +283,126 @@ func TestIntegration(t *testing.T) {
 		w := httptest.NewRecorder()
 		prod.auth(prod.state)(w, r)
 		assert(w.Code == 401 && strings.Contains(w.Body.String(), "Telegram"), "dev auth enabled in production")
+	})
+	t.Run("revoked access and forged group", func(t *testing.T) {
+		v := 4
+		c := command{Kind: "grade", UserID: 3099, LabID: 1, Value: &v}
+		must(2001, c) // Healthy control: grant is actually usable.
+		c.Version = 1
+		must(1001, command{Kind: "assignment", SubjectID: 1, GroupID: 1, TeacherID: 2001, Enabled: false})
+		before := count("SELECT count(*) FROM audit")
+		status, _ := call(2001, c, "")
+		assert(status == 403, "revoked assignment still permits writes")
+		assert(count("SELECT version FROM grades WHERE student_id=3099 AND lab_id=1") == 1, "denied write changed grade")
+		assert(count("SELECT count(*) FROM audit") == before, "denied write created audit")
+		r, _ := http.NewRequest("GET", httpServer.URL+"/api/state", nil)
+		r.Header.Set("X-Dev-User", "2001")
+		response, err := http.DefaultClient.Do(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var state struct{ Grades, Labs, Assignments []any }
+		err = json.NewDecoder(response.Body).Decode(&state)
+		response.Body.Close()
+		assert(err == nil && response.StatusCode == 200, "state read failed")
+		assert(len(state.Grades) == 0 && len(state.Labs) == 0 && len(state.Assignments) == 0, "revoked assignment exposes gradebook")
+		must(1001, command{Kind: "assignment", SubjectID: 1, GroupID: 1, TeacherID: 2001, Enabled: true})
+		forged := c
+		forged.UserID = 4001
+		status, _ = call(2001, forged, "")
+		assert(status == 400, "teacher graded a student from another group")
+		assert(count("SELECT count(*) FROM grades WHERE student_id=4001") == 0, "forged write persisted")
+		event := makeEvent("fifo")
+		must(1001, command{Kind: "role", UserID: 2001, Enabled: false})
+		status, _ = call(2001, c, "")
+		assert(status == 403, "revoked teacher graded")
+		status, _ = call(2001, command{Kind: "event_action", EventID: event, Action: "start"}, "")
+		assert(status == 403, "revoked teacher controls event")
+		must(1001, command{Kind: "role", UserID: 2001, Enabled: true})
+		status, _ = call(2001, c, "")
+		assert(status == 403, "old assignment silently restored with role")
+		must(1001, command{Kind: "assignment", SubjectID: 1, GroupID: 1, TeacherID: 2001, Enabled: true})
+		must(2001, c)
+		assert(count("SELECT version FROM grades WHERE student_id=3099 AND lab_id=1") == 2, "new grant not usable")
+	})
+	t.Run("concurrent grade conflict and durable replay", func(t *testing.T) {
+		start := make(chan struct{})
+		results := make(chan int, 2)
+		for _, value := range []int{4, 5} {
+			go func(v int) {
+				<-start
+				status, _ := call(2001, command{Kind: "grade", UserID: 3098, LabID: 1, Value: &v}, "")
+				results <- status
+			}(value)
+		}
+		close(start)
+		a, b := <-results, <-results
+		assert((a == 200 && b == 409) || (a == 409 && b == 200), "concurrent edits did not conflict")
+		assert(count("SELECT version FROM grades WHERE student_id=3098 AND lab_id=1") == 1, "lost update incremented version twice")
+		before := count("SELECT count(*) FROM audit WHERE action='grade_change'")
+		v := 3
+		c := command{Kind: "grade", UserID: 3098, LabID: 1, Value: &v, Version: 1}
+		var wg sync.WaitGroup
+		for i := 0; i < 10; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				status, body := call(2001, c, "durable-grade-retry")
+				if status != 200 {
+					t.Errorf("replay: %d %s", status, body)
+				}
+			}()
+		}
+		wg.Wait()
+		assert(count("SELECT version FROM grades WHERE student_id=3098 AND lab_id=1") == 2, "duplicate replay write")
+		assert(count("SELECT count(*) FROM audit WHERE action='grade_change'") == before+1, "duplicate grade audit")
+		restarted := &server{db: db, dev: true, roots: map[int64]bool{1001: true}}
+		payload, _ := json.Marshal(c)
+		r := httptest.NewRequest("POST", "/api/command", bytes.NewReader(payload))
+		r.Header.Set("X-Dev-User", "2001")
+		r.Header.Set("Idempotency-Key", "durable-grade-retry")
+		w := httptest.NewRecorder()
+		restarted.auth(restarted.command)(w, r)
+		assert(w.Code == 200, "replay lost after server recreation")
+		assert(count("SELECT version FROM grades WHERE student_id=3098 AND lab_id=1") == 2, "restart replay wrote again")
+	})
+	t.Run("notification recovery", func(t *testing.T) {
+		// This schema belongs to this test. Defer other fixtures' deliveries.
+		if _, err := db.Exec(ctx, "UPDATE notifications SET next_at=now()+interval '1 day'"); err != nil {
+			t.Fatal(err)
+		}
+		var id int64
+		if err := db.QueryRow(ctx, "INSERT INTO notifications(recipient,kind,message) VALUES(3001,'qa','Test notice') RETURNING id").Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		calls := 0
+		client := &http.Client{Transport: testTransport(func(r *http.Request) (*http.Response, error) {
+			calls++
+			var payload struct {
+				ChatID int64  `json:"chat_id"`
+				Text   string `json:"text"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			assert(payload.ChatID == 3001 && payload.Text == "Test notice", "wrong recipient or payload")
+			status, body := 200, `{"ok":true}`
+			if calls == 1 {
+				status, body = 503, `{"ok":false}`
+			}
+			return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+		})}
+		s.deliver(ctx, client)
+		assert(count("SELECT count(*) FROM notifications WHERE id=$1 AND delivered_at IS NULL AND attempts=1 AND next_at>now()", id) == 1, "failed notification lost or not deferred")
+		s.deliver(ctx, client)
+		assert(calls == 1, "retried before backoff")
+		if _, err := db.Exec(ctx, "UPDATE notifications SET next_at=now() WHERE id=$1", id); err != nil {
+			t.Fatal(err)
+		}
+		restarted := &server{db: db}
+		restarted.deliver(ctx, client)
+		restarted.deliver(ctx, client)
+		assert(calls == 2, "delivered notification repeated or retry missing")
+		assert(count("SELECT count(*) FROM notifications WHERE id=$1 AND delivered_at IS NOT NULL AND attempts=2", id) == 1, "successful delivery not persisted")
 	})
 }

@@ -1,0 +1,6 @@
+=== RUN   TestIntegration
+=== RUN   TestIntegration/notification_recovery
+--- PASS: TestIntegration (0.90s)
+    --- PASS: TestIntegration/notification_recovery (0.01s)
+PASS
+ok  	it_proj	1.916s

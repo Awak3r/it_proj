@@ -1,0 +1,6 @@
+=== RUN   TestIntegration
+=== RUN   TestIntegration/revoked_access_and_forged_group
+--- PASS: TestIntegration (1.06s)
+    --- PASS: TestIntegration/revoked_access_and_forged_group (0.07s)
+PASS
+ok  	it_proj	2.076s

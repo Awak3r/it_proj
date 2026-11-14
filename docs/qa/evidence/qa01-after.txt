@@ -1,0 +1,12 @@
+
+> labqueue@0.1.0 test
+> playwright test --grep stale snapshot
+
+
+Running 1 test using 1 worker
+
+(node:13665) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/recovery.spec.ts:10:1 › stale snapshot cannot roll back a saved grade (4.7s)
+
+  1 passed (5.5s)

@@ -1,0 +1,32 @@
+
+> labqueue@0.1.0 test
+> playwright test --grep lost response
+
+
+Running 1 test using 1 worker
+
+(node:13873) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/recovery.spec.ts:53:1 › lost response retries the same grade without a second write (1.8s)
+
+
+  1) tests/recovery.spec.ts:53:1 › lost response retries the same grade without a second write ─────
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 4
+    Received: 3
+
+       96 |     const after: State = await (await page.request.get("/api/state", { headers })).json();
+       97 |     const grade = after.grades.find((g) => g.student_id === 3002 && g.lab_id === 2)!;
+    >  98 |     expect(grade.version).toBe((old?.version || 0) + 1);
+          |                           ^
+       99 |     expect(grade.value).toBe(Number(value));
+      100 |     expect(after.entries.filter((e) => e.event_id === event.id && e.state === "called")).toHaveLength(1);
+      101 |   } finally {
+        at /workspace/it_proj/web/tests/recovery.spec.ts:98:27
+
+    Error Context: test-results/recovery-lost-response-ret-faa8f-rade-without-a-second-write/error-context.md
+
+  1 failed
+    tests/recovery.spec.ts:53:1 › lost response retries the same grade without a second write ──────

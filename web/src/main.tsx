@@ -80,19 +80,35 @@ function App() {
     >
   >({});
   const commandKeys = useRef(new Map<string, string>());
-  const inflight = useRef(false);
+  const snapshotVersion = useRef(0);
+  const snapshot = useRef<
+    { promise: Promise<boolean>; pending: boolean } | undefined
+  >(undefined);
   const gradeLocks = useRef(new Set<string>());
-  async function refresh() {
-    if (inflight.current) return;
-    inflight.current = true;
-    try {
-      setData(await request<State>("state"));
-      setConnectionError("");
-    } catch (e) {
-      setConnectionError((e as Error).message);
-    } finally {
-      inflight.current = false;
-    }
+  async function refresh(force = false): Promise<boolean> {
+    if (!force && snapshot.current?.pending) return snapshot.current.promise;
+    const version = ++snapshotVersion.current;
+    const promise = (async () => {
+      let ok = false;
+      try {
+        const state = await request<State>("state");
+        if (version === snapshotVersion.current) {
+          setData(state);
+          setConnectionError("");
+          ok = true;
+        }
+      } catch (e) {
+        if (version === snapshotVersion.current)
+          setConnectionError((e as Error).message);
+      }
+      // A mutation may have started a newer read while this one was in flight.
+      // Its callers must wait for that read before releasing pending edits.
+      if (version !== snapshotVersion.current) return snapshot.current!.promise;
+      snapshot.current!.pending = false;
+      return ok;
+    })();
+    snapshot.current = { promise, pending: true };
+    return promise;
   }
   useEffect(() => {
     window.Telegram?.WebApp.ready();
@@ -121,7 +137,7 @@ function App() {
     try {
       await request("command", c, key);
       commandKeys.current.delete(body);
-      await refresh();
+      await refresh(true);
     } finally {
       setBusy(false);
     }
@@ -154,7 +170,9 @@ function App() {
       <div className="boot">
         <h1>LabTurn</h1>
         <p>{error || connectionError || "Загрузка…"}</p>
-        {error && <button onClick={refresh}>Попробовать ещё раз</button>}
+        {error && (
+          <button onClick={() => refresh()}>Попробовать ещё раз</button>
+        )}
       </div>
     );
   const me = data.me;
@@ -333,12 +351,15 @@ function App() {
         },
         key,
       );
+      if (!(await refresh(true)))
+        throw new Error(
+          "Оценка сохранена, но ведомость не обновилась. Повторите проверку.",
+        );
       setPending((p) => {
         const n = { ...p };
         delete n[cell];
         return n;
       });
-      await refresh();
     } catch (e) {
       setPending((p) => ({
         ...p,
