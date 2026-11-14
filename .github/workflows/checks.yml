@@ -1,0 +1,45 @@
+name: LabTurn checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: labqueue
+          POSTGRES_PASSWORD: labqueue
+          POSTGRES_DB: labqueue
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U labqueue"
+          --health-interval 5s --health-timeout 3s --health-retries 15
+    env:
+      DATABASE_URL: postgres://labqueue:labqueue@localhost:5432/labqueue?sslmode=disable
+      TEST_DATABASE_URL: postgres://labqueue:labqueue@localhost:5432/labqueue?sslmode=disable
+      ROOT_TELEGRAM_IDS: "1001"
+      DEV_AUTH: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: go test -race -count=1 ./... && go vet ./... && go build -o ../labturn .
+        working-directory: backend
+      - run: npm ci && npm run build && npx playwright install --with-deps chromium
+        working-directory: web
+      - run: |
+          WEB_DIST=web/dist ./labturn > /tmp/labturn.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://localhost:8080/api/health && break || sleep 1; done
+          python3 scripts/seed-demo.py
+      - run: npm test
+        working-directory: web
+      - run: docker build -t labturn:ci .

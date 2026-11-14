@@ -1,0 +1,10 @@
+.env
+web/node_modules/
+web/dist/
+*.log
+coverage.out
+web/test-results/
+web/playwright-report/
+*.tsbuildinfo
+backend/labqueue
+backups/
