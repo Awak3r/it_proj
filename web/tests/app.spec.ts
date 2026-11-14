@@ -9,12 +9,8 @@ test("student desktop navigation and grade permissions", async ({ page }) => {
   page.on("pageerror", (e) => errors.push(e.message));
   await page.setViewportSize({ width: 1440, height: 1000 });
   await login(page, "3001", "Я студент");
-  await expect(
-    page.getByRole("heading", { name: "Привет, Михаил." }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Ближайшие события" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "События" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "События" })).toBeVisible();
   await page.screenshot({
     path: process.env.SCREENSHOT_DIR
       ? process.env.SCREENSHOT_DIR + "/labturn-desktop.png"
@@ -39,16 +35,14 @@ test("student desktop navigation and grade permissions", async ({ page }) => {
     page.getByRole("heading", { name: "Очередь", exact: false }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Пульт преподавателя" }),
+    page.getByRole("heading", { name: "Управление очередью" }),
   ).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 test("student mobile has no horizontal page overflow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page, "3001", "Я студент");
-  await expect(
-    page.getByRole("heading", { name: "Привет, Михаил." }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "События" })).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -61,9 +55,7 @@ test("student mobile has no horizontal page overflow", async ({ page }) => {
     fullPage: true,
   });
   await page.getByRole("button", { name: "Сменить роль", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Как вы входите?" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Вход" })).toBeVisible();
 });
 async function api(page: Page, user: number, data: Record<string, unknown>) {
   const response = await page.request.post("/api/command", {
@@ -110,14 +102,12 @@ test("teacher grade autosave keeps student in queue and finish is separate", asy
   const event = await createTestEvent(page, "fifo");
   await login(page, "2001", "Я преподаватель");
   const card = () =>
-    page
-      .getByRole("button")
-      .filter({
-        has: page.getByRole("heading", { name: event.name, exact: true }),
-      });
+    page.getByRole("button").filter({
+      has: page.getByRole("heading", { name: event.name, exact: true }),
+    });
   await card().click();
   await page.getByRole("button", { name: "Вызвать следующего" }).click();
-  await expect(page.getByText("СЕЙЧАС ПРИНИМАЕТЕ")).toBeVisible();
+  await expect(page.getByText("На приёме")).toBeVisible();
   await page
     .getByRole("button", { name: "Ведомость", exact: true })
     .last()
@@ -129,11 +119,11 @@ test("teacher grade autosave keeps student in queue and finish is separate", asy
   await expect(cell).toHaveValue(value);
   await page.getByRole("button", { name: "События", exact: true }).click();
   await card().click();
-  await expect(page.getByText("СЕЙЧАС ПРИНИМАЕТЕ")).toBeVisible();
+  await expect(page.getByText("На приёме")).toBeVisible();
   await page
     .getByRole("button", { name: "Завершить приём", exact: true })
     .click();
-  await expect(page.getByText("СЕЙЧАС ПРИНИМАЕТЕ")).toHaveCount(0);
+  await expect(page.getByText("На приёме")).toHaveCount(0);
   await api(page, 2001, {
     kind: "event_action",
     event_id: event.id,
@@ -167,9 +157,7 @@ test("root has management and a single manual shuffle", async ({ page }) => {
   await expect(shuffle).toBeVisible();
   await shuffle.click();
   await expect(shuffle).toHaveCount(0);
-  await expect(
-    page.getByText("Порядок перемешивания сохранён.", { exact: false }),
-  ).toBeVisible();
+  await expect(page.getByText("Перемешано.", { exact: false })).toBeVisible();
   await api(page, 2001, {
     kind: "event_action",
     event_id: event.id,

@@ -26,6 +26,7 @@ import {
 import { request, devUser } from "./api";
 import { State, Event, Entry, Lab, strategies, statuses } from "./types";
 import "./style.css";
+import { useTelegramTheme } from "./theme";
 type Cmd = Record<string, unknown>;
 type Field = {
   name: string;
@@ -51,6 +52,7 @@ const date = (v: string) =>
   }).format(new Date(v));
 const active = (e: Entry) => ["waiting", "called"].includes(e.state);
 function App() {
+  useTelegramTheme();
   const [data, setData] = useState<State>();
   const [error, setError] = useState("");
   const [connectionError, setConnectionError] = useState("");
@@ -150,14 +152,8 @@ function App() {
   if (!data)
     return (
       <div className="boot">
-        <div className="brand-mark">
-          <ListOrdered />
-        </div>
-        <h1>
-          LabTurn
-          <ArrowUpRight size={22} />
-        </h1>
-        <p>{error || connectionError || "Подключаемся к вашей очереди…"}</p>
+        <h1>LabTurn</h1>
+        <p>{error || connectionError || "Загрузка…"}</p>
         {error && <button onClick={refresh}>Попробовать ещё раз</button>}
       </div>
     );
@@ -377,7 +373,7 @@ function App() {
           a.position - b.position ||
           a.id - b.id,
       );
-  const name = me.name.split(" ")[0] || "друг";
+
   const devPicker = dev && (
     <div className="devbar">
       <span>Режим разработки</span>
@@ -402,32 +398,11 @@ function App() {
       {devPicker}
       {roleScreen ? (
         <main className="welcome">
-          <a className="brand">
-            <div className="brand-mark">
-              <ListOrdered size={23} />
-            </div>
-            LabTurn
-            <ArrowUpRight size={22} />
-          </a>
-          <div className="welcome-copy">
-            <span className="eyebrow">ТВОЯ ОЧЕРЕДЬ СДАВАТЬ</span>
-            <h1>
-              Меньше ожидания.
-              <br />
-              <em>Больше ясности.</em>
-            </h1>
-            <p>
-              Записывайтесь LabTurn, следите за очередью
-              <br />и держите все результаты под рукой.
-            </p>
-          </div>
+          <h1 className="brand">LabTurn</h1>
+
           <section className="welcome-panel">
-            <h2>{!role ? "Как вы входите?" : "Давайте познакомимся"}</h2>
-            <p>
-              {!role
-                ? "Выберите, что будете делать сегодня."
-                : "Имя будет видно в очереди и ведомости."}
-            </p>
+            <h2>{!role ? "Вход" : "Профиль"}</h2>
+
             {!role ? (
               <>
                 <button
@@ -437,7 +412,6 @@ function App() {
                   <GraduationCap />
                   <span>
                     <b>Я студент</b>
-                    <small>Очереди и результаты</small>
                   </span>
                   <ArrowRight />
                 </button>
@@ -448,7 +422,6 @@ function App() {
                   <BookOpen />
                   <span>
                     <b>Я преподаватель</b>
-                    <small>Приём работ и ведомость</small>
                   </span>
                   <ArrowRight />
                 </button>
@@ -478,40 +451,34 @@ function App() {
               />
             )}
           </section>
-          <footer>Ваша очередь — под контролем.</footer>
         </main>
       ) : (
         <div className="shell">
           <aside className="sidebar">
-            <a
-              className="brand"
-              onClick={() => {
-                setTab("events");
-                setEventID(undefined);
-              }}
-            >
-              <div className="brand-mark">
-                <ListOrdered size={22} />
-              </div>
-              LabTurn
-              <ArrowUpRight size={22} />
-            </a>
-            <div className="workspace">
-              <div className="workspace-icon">
-                <GraduationCap size={20} />
-              </div>
-              <div>
-                <b>Учебное пространство</b>
-                <small>
-                  {role === "student"
-                    ? groupName(me.group_id)
-                    : me.root
-                      ? "Администратор"
-                      : "Преподаватель"}
-                </small>
+            <div className="app-header">
+              <button
+                className="brand"
+                onClick={() => {
+                  setTab("events");
+                  setEventID(undefined);
+                }}
+              >
+                LabTurn
+              </button>
+              <div className="account-actions">
+                <button
+                  className="profile"
+                  onClick={changeProfile}
+                  aria-label="Профиль"
+                >
+                  <Settings2 size={17} />
+                  <span>{me.name}</span>
+                </button>
+                <button className="switch-role" onClick={() => setRole("")}>
+                  Сменить роль
+                </button>
               </div>
             </div>
-            <small className="nav-caption">ВАШЕ ПРОСТРАНСТВО</small>
             <nav>
               {[
                 { id: "events", label: "События", icon: LayoutGrid },
@@ -521,7 +488,7 @@ function App() {
                   ? [
                       {
                         id: "teaching",
-                        label: "Мой кабинет",
+                        label: "Мои события",
                         icon: GraduationCap,
                       },
                     ]
@@ -546,57 +513,8 @@ function App() {
                 </button>
               ))}
             </nav>
-            <div className="sidebar-note">
-              <span className="live-dot" />
-              <b>Всё по порядку</b>
-              <p>Очереди обновляются автоматически каждые 3 секунды.</p>
-            </div>
-            <button className="profile" onClick={changeProfile}>
-              <div className="avatar">{me.name.slice(0, 1)}</div>
-              <span>
-                <b>{me.name}</b>
-                <small>
-                  {me.root
-                    ? "Root"
-                    : role === "teacher"
-                      ? "Преподаватель"
-                      : "Студент"}
-                </small>
-              </span>
-              <Settings2 size={16} />
-            </button>
-            <button className="switch-role" onClick={() => setRole("")}>
-              <LogOut size={14} /> Сменить режим
-            </button>
           </aside>
           <main className="main">
-            <header className="topbar">
-              <span>
-                Учёба <ChevronRight size={14} />{" "}
-                {selected
-                  ? "Событие"
-                  : {
-                      events: "События",
-                      mine: "Мои очереди",
-                      grades: "Ведомость",
-                      teaching: "Кабинет",
-                      admin: "Управление",
-                    }[tab]}
-              </span>
-              <span>
-                <span className="live-dot" /> Онлайн{" "}
-                <button className="mobile-role" onClick={() => setRole("")}>
-                  Сменить роль
-                </button>
-                <span className="top-date">
-                  {new Intl.DateTimeFormat("ru", {
-                    day: "numeric",
-                    month: "long",
-                    timeZone: "Europe/Moscow",
-                  }).format(new Date())}
-                </span>
-              </span>
-            </header>
             <div className="content">
               {(error || connectionError) && (
                 <div role="alert" className="alert">
@@ -621,7 +539,7 @@ function App() {
                   </button>
                   <div className="page-title">
                     <div>
-                      <span className="eyebrow">
+                      <span className="subject-label">
                         {subjectName(selected.subject_id)}
                       </span>
                       <h1>{selected.name}</h1>
@@ -667,28 +585,13 @@ function App() {
                 <>
                   <div className="page-title">
                     <div>
-                      <span className="eyebrow">
-                        {tab === "mine"
-                          ? "ВАШЕ ВРЕМЯ ПОД КОНТРОЛЕМ"
-                          : tab === "teaching"
-                            ? "ПРОСТРАНСТВО ПРЕПОДАВАТЕЛЯ"
-                            : "УЧЕБНОЕ ПРОСТРАНСТВО"}
-                      </span>
                       <h1>
                         {tab === "events"
-                          ? `Привет, ${name}`
+                          ? "События"
                           : tab === "mine"
                             ? "Мои очереди"
                             : "Мой кабинет"}
-                        <span className="title-dot">.</span>
                       </h1>
-                      <p>
-                        {tab === "events"
-                          ? "Хороший день, чтобы сдать ещё одну лабораторную."
-                          : tab === "mine"
-                            ? "Все ваши активные записи в одном месте."
-                            : "Создавайте события и принимайте работы в удобном темпе."}
-                      </p>
                     </div>
                     {teacher && (
                       <button onClick={eventForm}>
@@ -696,127 +599,7 @@ function App() {
                       </button>
                     )}
                   </div>
-                  {tab === "events" && (
-                    <>
-                      <section className="hero">
-                        <div>
-                          <span className="hero-tag">
-                            <span className="live-dot" /> ВАША УЧЁБА, ВАШ ТЕМП
-                          </span>
-                          <h2>
-                            Сдавайте работы.
-                            <br />
-                            Не тратьте время в очереди.
-                          </h2>
-                          <p>
-                            Запишитесь на событие — мы подскажем,
-                            <br />
-                            когда будет ваш выход.
-                          </p>
-                          <button
-                            className="hero-button"
-                            onClick={() => setTab("mine")}
-                          >
-                            Мои очереди <ArrowUpRight size={18} />
-                          </button>
-                        </div>
-                        <div className="queue-art" aria-hidden="true">
-                          <span className="orbit orbit-one" />
-                          <span className="orbit orbit-two" />
-                          <div className="art-ticket">
-                            <span>ВАША ОЧЕРЕДЬ</span>
-                            <strong>
-                              {mine.length
-                                ? String(
-                                    board(
-                                      data.events.find(
-                                        (ev) => ev.id === mine[0].event_id,
-                                      )!,
-                                    ).findIndex((e) => e.id === mine[0].id) + 1,
-                                  ).padStart(2, "0")
-                                : "↗"}
-                            </strong>
-                            <div>
-                              <span className="live-dot" /> Всё идёт по плану
-                            </div>
-                          </div>
-                          <div className="art-label">
-                            <Check size={16} /> Ещё на шаг ближе
-                          </div>
-                          <span className="spark">✳</span>
-                        </div>
-                      </section>
-                      <div className="stats">
-                        <div>
-                          <div className="stat-icon">
-                            <CalendarDays />
-                          </div>
-                          <span>
-                            <b>
-                              {
-                                data.events.filter((e) =>
-                                  ["planned", "live"].includes(e.state),
-                                ).length
-                              }
-                            </b>
-                            <small>Доступных событий</small>
-                          </span>
-                        </div>
-                        <div>
-                          <div className="stat-icon mint">
-                            <ListOrdered />
-                          </div>
-                          <span>
-                            <b>{mine.length.toString().padStart(2, "0")}</b>
-                            <small>Активных очередей</small>
-                          </span>
-                        </div>
-                        <div>
-                          <div className="stat-icon sand">
-                            <Check />
-                          </div>
-                          <span>
-                            <b>
-                              {data.grades
-                                .filter(
-                                  (g) =>
-                                    g.student_id === me.id &&
-                                    (g.value || 0) >= 3 &&
-                                    data.labs.some(
-                                      (l) =>
-                                        l.id === g.lab_id &&
-                                        !l.archived &&
-                                        l.group_id === me.group_id,
-                                    ),
-                                )
-                                .length.toString()
-                                .padStart(2, "0")}
-                            </b>
-                            <small>Сданных работ</small>
-                          </span>
-                        </div>
-                      </div>
-                    </>
-                  )}
                   <div className="section-heading">
-                    <h2>
-                      {tab === "mine"
-                        ? "Вы записаны"
-                        : tab === "teaching"
-                          ? "Мои события"
-                          : "Ближайшие события"}{" "}
-                      <span>
-                        {
-                          data.events.filter((e) =>
-                            tab === "mine"
-                              ? mine.some((q) => q.event_id === e.id)
-                              : tab === "teaching"
-                                ? e.teacher_id === me.id
-                                : true,
-                          ).length
-                        }
-                      </span>
-                    </h2>
                     {tab !== "mine" && (
                       <div className="segments">
                         <button
@@ -857,42 +640,33 @@ function App() {
                           key={ev.id}
                           onClick={() => setEventID(ev.id)}
                         >
-                          <div className="card-top">
-                            <div className={"subject-icon color-" + (i % 3)}>
-                              <BookOpen size={22} />
+                          <div className="event-info">
+                            <span className="card-subject">
+                              {subjectName(ev.subject_id)}
+                            </span>
+                            <h3>{ev.name}</h3>
+                            <p className="card-teacher">
+                              {ev.teacher_name || "Преподаватель"} ·{" "}
+                              {ev.group_ids.map(groupName).join(", ")}
+                            </p>
+                            <div className="card-meta">
+                              <span>{date(ev.starts_at)} МСК</span>
+                              {ev.room && <span>ауд. {ev.room}</span>}
+                              <span>{board(ev).length} в очереди</span>
                             </div>
+                          </div>
+                          <div className="event-status">
                             <span className={"badge " + ev.state}>
                               {statuses[ev.state]}
                             </span>
-                          </div>
-                          <span className="card-subject">
-                            {subjectName(ev.subject_id)}
-                          </span>
-                          <h3>{ev.name}</h3>
-                          <p className="card-teacher">
-                            {ev.teacher_name || "Преподаватель"} ·{" "}
-                            {ev.group_ids.map(groupName).join(", ")}
-                          </p>
-                          <div className="card-meta">
-                            <span>
-                              <CalendarDays size={16} />
-                              {date(ev.starts_at)} МСК
-                            </span>
-                            <span>
-                              <Users size={16} />
-                              {board(ev).length} в очереди{" "}
-                              {ev.room && "· ауд. " + ev.room}
-                            </span>
-                          </div>
-                          <div className="card-bottom">
-                            <span>
+                            <span className="registration-status">
                               {mine.some((q) => q.event_id === ev.id)
-                                ? "✓ Вы записаны"
+                                ? "Вы записаны"
                                 : ev.registration_open
                                   ? "Запись открыта"
                                   : "Запись закрыта"}
                             </span>
-                            <ArrowUpRight size={20} />
+                            <ChevronRight size={17} />
                           </div>
                         </button>
                       ))}
@@ -910,15 +684,9 @@ function App() {
                   ) && (
                     <Empty
                       title={
-                        tab === "mine"
-                          ? "Вы пока не записаны"
-                          : "Событий пока нет"
+                        tab === "mine" ? "Нет активных записей" : "Нет событий"
                       }
-                      text={
-                        tab === "mine"
-                          ? "Выберите подходящее событие и займите место в очереди."
-                          : "Новые события появятся здесь после создания преподавателем."
-                      }
+                      text={tab === "mine" ? "" : ""}
                     />
                   )}
                 </>
@@ -926,13 +694,7 @@ function App() {
                 <>
                   <div className="page-title">
                     <div>
-                      <span className="eyebrow">
-                        КАЖДАЯ РАБОТА — ШАГ ВПЕРЁД
-                      </span>
-                      <h1>
-                        Ведомость<span className="title-dot">.</span>
-                      </h1>
-                      <p>Одна таблица. Все работы и результаты.</p>
+                      <h1>Ведомость</h1>
                     </div>
                     {canGrade && (
                       <button
@@ -980,7 +742,7 @@ function App() {
                     <span className="save-hint">
                       {Object.keys(pending).length
                         ? "Есть несохранённые изменения"
-                        : "Изменения сохраняются автоматически"}
+                        : "Сохранено"}
                     </span>
                   </div>
                   <div className="table-wrap">
@@ -1033,9 +795,6 @@ function App() {
                               <tr key={u.id}>
                                 <td>
                                   <div className="student-name">
-                                    <span className="avatar small">
-                                      {u.name.slice(0, 1) || "?"}
-                                    </span>
                                     {u.name || "Без имени"}
                                     {u.id === me.id && <small>вы</small>}
                                   </div>
@@ -1093,13 +852,6 @@ function App() {
                                     {done} / {labs.length}
                                     <small>осталось {labs.length - done}</small>
                                   </div>
-                                  <div className="progress">
-                                    <span
-                                      style={{
-                                        width: `${labs.length ? (done / labs.length) * 100 : 0}%`,
-                                      }}
-                                    />
-                                  </div>
                                 </td>
                               </tr>
                             );
@@ -1148,14 +900,7 @@ function App() {
                       l.subject_id === currentSubject &&
                       !l.archived,
                   ) && (
-                    <Empty
-                      title="Здесь будут лабораторные"
-                      text={
-                        canGrade
-                          ? "Добавьте первую работу, чтобы начать заполнять ведомость."
-                          : "Преподаватель ещё не добавил работы."
-                      }
-                    />
+                    <Empty title="Нет лабораторных" text={canGrade ? "" : ""} />
                   )}
                   <p className="footnote">
                     2 — не сдано · 3, 4, 5 — сдано · Пустая ячейка — оценки ещё
@@ -1166,13 +911,8 @@ function App() {
                 <>
                   <div className="page-title">
                     <div>
-                      <span className="eyebrow">ROOT</span>
-                      <h1>
-                        Управление<span className="title-dot">.</span>
-                      </h1>
-                      <p>Группы, предметы и доступ преподавателей.</p>
+                      <h1>Управление</h1>
                     </div>
-                    <ShieldCheck size={36} />
                   </div>
                   <div className="admin-grid">
                     {(["group", "subject"] as const).map((kind) => (
@@ -1424,10 +1164,6 @@ function App() {
                 </>
               ) : null}
             </div>
-            <footer className="main-footer">
-              LabTurn <span>Меньше суеты. Больше сданных работ.</span>
-              <small>Время — московское</small>
-            </footer>
           </main>
         </div>
       )}
@@ -1613,9 +1349,8 @@ function FormModal({ modal, close }: { modal: Modal; close: () => void }) {
 function Empty({ title, text }: { title: string; text: string }) {
   return (
     <div className="empty">
-      <ListOrdered size={28} />
       <h3>{title}</h3>
-      <p>{text}</p>
+      {text && <p>{text}</p>}
     </div>
   );
 }
@@ -1669,11 +1404,11 @@ function EventView({
     <>
       <div className="event-summary">
         <section className="panel queue-position">
-          <small>ВАША ПОЗИЦИЯ</small>
+          <small>Позиция</small>
           <strong>
             {my
               ? my.state === "called"
-                ? "Ваш выход"
+                ? "Вызван"
                 : unshuffled
                   ? "—"
                   : String(position).padStart(2, "0")
@@ -1686,7 +1421,7 @@ function EventView({
                 : unshuffled
                   ? "Порядок определит root"
                   : average
-                    ? `Примерно ${Math.ceil(wait)} мин ожидания`
+                    ? `Ожидание ≈ ${Math.ceil(wait)} мин`
                     : "Пока недостаточно данных"
               : "Вы пока не в очереди"}
           </p>
@@ -1720,19 +1455,14 @@ function EventView({
           </div>
           <p>{strategies[ev.strategy]}</p>
           {unshuffled && (
-            <div className="info">
-              Root перемешает участников один раз до первого вызова. До этого
-              позиция не определена.
-            </div>
+            <div className="info">Ожидает перемешивания root.</div>
           )}
           {ev.shuffled && (
-            <p className="footnote">
-              Порядок перемешивания сохранён. Новые участники — в конец.
-            </p>
+            <p className="footnote">Перемешано. Новые участники — в конец.</p>
           )}
           {ev.manual_order && ev.strategy !== "random" && (
             <p className="footnote">
-              Root изменил порядок. Новые участники — в начало.
+              Ручной порядок. Новые участники — в начало.
             </p>
           )}
           {owner && !closed && (
@@ -1782,20 +1512,22 @@ function EventView({
               )}
             </div>
           )}
-          <button
-            className="link"
-            onClick={() =>
-              window.Telegram?.WebApp.requestWriteAccess?.(() => {})
-            }
-          >
-            <Bell size={16} /> Разрешить уведомления бота
-          </button>
+          {window.Telegram?.WebApp.requestWriteAccess && (
+            <button
+              className="link"
+              onClick={() =>
+                window.Telegram?.WebApp.requestWriteAccess?.(() => {})
+              }
+            >
+              <Bell size={16} /> Уведомления
+            </button>
+          )}
         </section>
       </div>
       {owner && (
         <section className="panel controls">
           <div className="section-heading">
-            <h2>Пульт преподавателя</h2>
+            <h2>Управление очередью</h2>
             {!closed && (
               <button
                 className="icon-button"
@@ -1909,11 +1641,8 @@ function EventView({
               </div>
               {current && (
                 <div className="current-student">
-                  <span className="avatar">
-                    {current.user_name.slice(0, 1)}
-                  </span>
                   <div>
-                    <small>СЕЙЧАС ПРИНИМАЕТЕ</small>
+                    <small>На приёме</small>
                     <h3>{current.user_name}</h3>
                   </div>
                   <div className="actions">
@@ -1948,9 +1677,6 @@ function EventView({
           <h2>
             {unshuffled ? "Участники" : "Очередь"} <span>{entries.length}</span>
           </h2>
-          <span className="footnote">
-            <span className="live-dot" /> Обновляется автоматически
-          </span>
         </div>
         {entries.length ? (
           entries.map((e, i) => (
@@ -1967,9 +1693,7 @@ function EventView({
                   String(i + 1).padStart(2, "0")
                 )}
               </span>
-              <span className="avatar small">
-                {e.user_name.slice(0, 1) || "?"}
-              </span>
+
               <span className="queue-name">
                 {e.user_name || "Студент"}
                 {e.user_id === me.id && <small>вы</small>}
@@ -2027,11 +1751,9 @@ function EventView({
           ))
         ) : (
           <Empty
-            title={closed ? "Активных записей нет" : "Здесь пока свободно"}
+            title={closed ? "Активных записей нет" : "Очередь пуста"}
             text={
-              closed
-                ? "Событие закрыто. Оценки сохранены в ведомости."
-                : "Участники появятся после записи на событие."
+              closed ? "Событие закрыто. Оценки сохранены в ведомости." : ""
             }
           />
         )}
