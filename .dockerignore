@@ -1,6 +1,17 @@
 .git
 .env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+backups
+**/*.dump
+**/*.tar
+**/*.tar.gz
+**/*.tar.zst
 **/node_modules
+**/__pycache__
 **/dist
 **/test-results
 **/*.tsbuildinfo

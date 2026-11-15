@@ -8,3 +8,5 @@ web/playwright-report/
 *.tsbuildinfo
 backend/labqueue
 backups/
+__pycache__/
+*.py[cod]

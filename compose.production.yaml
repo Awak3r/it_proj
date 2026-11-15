@@ -1,0 +1,5 @@
+services:
+  app:
+    build: !reset null
+    image: ${LABTURN_IMAGE:?Set LABTURN_IMAGE in the server image.env}
+    pull_policy: never
