@@ -22,8 +22,9 @@ import {
   X,
   Bell,
   RefreshCw,
+  Download,
 } from "lucide-react";
-import { request, devUser } from "./api";
+import { request, devUser, authHeaders } from "./api";
 import { State, Event, Entry, Lab, strategies, statuses } from "./types";
 import "./style.css";
 import { useTelegramTheme } from "./theme";
@@ -63,6 +64,7 @@ function App() {
   const [connectionError, setConnectionError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [dev, setDev] = useState(false);
   const [role, setRole] = useState("");
   const [tab, setTab] = useState("events");
@@ -429,6 +431,34 @@ function App() {
       gradeLocks.current.delete(cell);
     }
   }
+  async function exportGradebook() {
+    if (!currentSubject || !currentGroup) return;
+    setExporting(true);
+    try {
+      const res = await fetch(
+        `/api/export?subject_id=${currentSubject}&group_id=${currentGroup}`,
+        { headers: authHeaders() },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(
+          data.error || "Не удалось выгрузить ведомость",
+        );
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `gradebook_${currentSubject}_${currentGroup}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setNotice("Ведомость выгружена");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setExporting(false);
+    }
+  }
   const accessibleGroups = groups.filter(
     (g) =>
       me.root ||
@@ -783,12 +813,23 @@ function App() {
                       <h1>Ведомость</h1>
                     </div>
                     {canGrade && (
-                      <button
-                        disabled={!currentGroup || !currentSubject}
-                        onClick={() => labForm()}
-                      >
-                        <Plus size={18} /> Добавить работу
-                      </button>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                          disabled={!currentGroup || !currentSubject}
+                          onClick={() => labForm()}
+                        >
+                          <Plus size={18} /> Добавить работу
+                        </button>
+                        <button
+                          className="secondary"
+                          disabled={
+                            !currentGroup || !currentSubject || exporting
+                          }
+                          onClick={exportGradebook}
+                        >
+                          <Download size={18} /> Экспорт
+                        </button>
+                      </div>
                     )}
                   </div>
                   <div className="filters">
