@@ -82,14 +82,15 @@ for (const archivedOnly of [false, true]) {
   });
 }
 
-test("root can navigate directly from the empty group notice to management", async ({
+test("root must leave student mode before opening management", async ({
   page,
 }) => {
   const commands = await openProfile(page, snapshot(true));
-  await expect(page.getByRole("status")).toContainText(
-    "Создайте учебную группу",
-  );
-  await page.getByRole("button", { name: "Перейти к управлению" }).click();
+  await expect(page.getByRole("status")).toContainText("Обратитесь к администратору");
+  await expect(page.getByRole("button", { name: "Перейти к управлению" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Назад", exact: true }).click();
+  await page.getByRole("button", { name: "Управление root →", exact: true }).click();
+  await page.locator("nav").getByRole("button", { name: "Управление", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Группы", exact: true }),
   ).toBeVisible();
@@ -106,10 +107,13 @@ test("root without a saved name can complete the profile before opening manageme
   state.me.name = "";
   const commands = await openProfile(page, state);
   await page.getByLabel("Имя и фамилия").fill("New root");
-  await page.getByRole("button", { name: "Перейти к управлению" }).click();
-  await expect(page.getByLabel("Имя и фамилия")).toHaveValue("New root");
+  await expect(page.getByRole("button", { name: "Перейти к управлению" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Назад", exact: true }).click();
+  await page.getByRole("button", { name: "Управление root →", exact: true }).click();
+  await page.getByLabel("Имя и фамилия").fill("New root");
   await expect(page.getByRole("status")).toHaveCount(0);
   await page.getByRole("button", { name: "Продолжить" }).click();
+  await page.locator("nav").getByRole("button", { name: "Управление", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Группы", exact: true }),
   ).toBeVisible();

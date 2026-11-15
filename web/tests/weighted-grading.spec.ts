@@ -78,7 +78,7 @@ type GradeCommand = {
   version: number;
 };
 
-async function openSynthetic(page: Page, state: State, rejectGrade = false) {
+async function openSynthetic(page: Page, state: State, rejectGrade = false, studentMode = false) {
   const commands: (LabCommand | GradeCommand)[] = [];
   let releaseGrade!: () => void;
   const gate = new Promise<void>((resolve) => {
@@ -137,12 +137,28 @@ async function openSynthetic(page: Page, state: State, rejectGrade = false) {
   await page.goto("/");
   await page
     .getByRole("button", {
-      name: state.me.teacher ? "Я преподаватель" : "Я студент",
+      name: !studentMode && state.me.teacher ? "Я преподаватель" : "Я студент",
       exact: true,
     })
     .click();
   await openGrades(page);
   return { commands, releaseGrade };
+}
+
+for (const root of [false, true]) {
+  test(`student mode hides teacher controls for a privileged account (root=${root})`, async ({ page }) => {
+    const state = snapshot();
+    state.me = { ...state.me, group_id: 1, root };
+    await openSynthetic(page, state, false, true);
+    await expect(page.getByRole("button", { name: "Добавить работу" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Экспорт", exact: true })).toHaveCount(0);
+    await expect(page.locator("select.grade")).toHaveCount(0);
+    await expect(page.locator("nav").getByRole("button", { name: "Управление", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Сменить роль" }).click();
+    await page.getByRole("button", { name: "Я преподаватель", exact: true }).click();
+    await openGrades(page);
+    await expect(page.getByRole("button", { name: "Добавить работу" })).toBeVisible();
+  });
 }
 
 async function openGrades(page: Page) {

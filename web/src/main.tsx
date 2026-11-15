@@ -146,6 +146,11 @@ function App() {
     };
   }, []);
   useEffect(() => {
+    setModal(undefined);
+    setEventID(undefined);
+    setTab("events");
+  }, [data?.me.teacher, data?.me.root]);
+  useEffect(() => {
     if (notice) {
       const t = setTimeout(() => setNotice(""), 4000);
       return () => clearTimeout(t);
@@ -163,6 +168,13 @@ function App() {
     } finally {
       setBusy(false);
     }
+  }
+  function changeRole(next: string) {
+    setRole(next);
+    setTab("events");
+    setEventID(undefined);
+    setModal(undefined);
+    setError("");
   }
   async function action(c: Cmd, message = "Готово") {
     try {
@@ -197,7 +209,12 @@ function App() {
         )}
       </div>
     );
-  const me = data.me;
+  // The selected view can hide account privileges, never grant new ones.
+  const me = {
+    ...data.me,
+    teacher: role !== "student" && data.me.teacher,
+    root: role !== "student" && data.me.root,
+  };
   const teacher = me.teacher || me.root;
   const groups = data.groups.filter((g) => !g.archived);
   const subjects = data.subjects.filter((s) => !s.archived);
@@ -237,6 +254,7 @@ function App() {
   const roleScreen =
     !role ||
     (role === "teacher" && !teacher) ||
+    (role === "root" && !me.root) ||
     !me.name ||
     (role === "student" && !me.group_id);
   function eventForm() {
@@ -511,7 +529,7 @@ function App() {
               <>
                 <button
                   className="role-card"
-                  onClick={() => setRole("student")}
+                  onClick={() => changeRole("student")}
                 >
                   <GraduationCap />
                   <span>
@@ -521,7 +539,7 @@ function App() {
                 </button>
                 <button
                   className="role-card"
-                  onClick={() => setRole("teacher")}
+                  onClick={() => changeRole("teacher")}
                 >
                   <BookOpen />
                   <span>
@@ -529,8 +547,8 @@ function App() {
                   </span>
                   <ArrowRight />
                 </button>
-                {me.root && (
-                  <button className="link" onClick={() => setRole("root")}>
+                {data.me.root && (
+                  <button className="link" onClick={() => changeRole("root")}>
                     Управление root →
                   </button>
                 )}
@@ -541,7 +559,7 @@ function App() {
                   Роль преподавателя выдаёт root. Сообщите ему свой Telegram ID:{" "}
                   <b>{me.id}</b>.
                 </div>
-                <button onClick={() => setRole("")}>Назад</button>
+                <button onClick={() => changeRole("")}>Назад</button>
               </>
             ) : (
               <Profile
@@ -551,12 +569,7 @@ function App() {
                 save={async (name, group_id) => {
                   await command({ kind: "profile", name, group_id });
                 }}
-                back={() => setRole("")}
-                manageGroups={() => {
-                  setRole("root");
-                  setTab("admin");
-                  setEventID(undefined);
-                }}
+                back={() => changeRole("")}
               />
             )}
           </section>
@@ -583,7 +596,7 @@ function App() {
                   <Settings2 size={17} />
                   <span>{me.name}</span>
                 </button>
-                <button className="switch-role" onClick={() => setRole("")}>
+                <button className="switch-role" onClick={() => changeRole("")}>
                   Сменить роль
                 </button>
               </div>
@@ -1324,7 +1337,7 @@ function App() {
           {notice}
         </div>
       )}
-      {modal && <FormModal modal={modal} close={() => setModal(undefined)} />}
+      {!roleScreen && modal && <FormModal modal={modal} close={() => setModal(undefined)} />}
       {busy && (
         <div className="busy">
           <LoaderCircle className="spin" size={16} /> Сохраняем…
@@ -1339,14 +1352,13 @@ function Profile({
   role,
   save,
   back,
-  manageGroups,
 }: {
   me: State["me"];
   groups: State["groups"];
   role: string;
   save: (n: string, g: number) => Promise<void>;
   back: () => void;
-  manageGroups: () => void;
+
 }) {
   const [n, setN] = useState(me.name);
   const [g, setG] = useState(me.group_id || 0);
@@ -1379,17 +1391,7 @@ function Profile({
       {role === "student" && !groups.length ? (
         <div className="info" role="status">
           <b>Групп пока нет.</b>{" "}
-          {me.root ? (
-            <>
-              Создайте учебную группу в управлении, затем вернитесь к входу
-              студента.
-              <button type="button" className="link" onClick={manageGroups}>
-                Перейти к управлению
-              </button>
-            </>
-          ) : (
-            "Обратитесь к администратору, чтобы он добавил вашу учебную группу."
-          )}
+          Обратитесь к администратору, чтобы он добавил вашу учебную группу.
         </div>
       ) : role === "student" ? (
         <label>
