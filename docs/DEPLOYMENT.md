@@ -1,16 +1,27 @@
 # LabTurn: production-публикация только через GitHub Actions
 
-Разработка идёт на ПК в WSL: [DEPLOYMENT-PC.md](DEPLOYMENT-PC.md). Репозиторий — https://github.com/Awak3r/it_proj, рабочая и публикуемая ветка — **`codex/labturn-mvp`**. Переход на Actions не требует merge в `main`. Ручной release с ПК/VPS и прежний `pc-release.sh deploy/release` больше не используются.
+Разработка идёт на ПК в WSL: [DEVELOPMENT.md](DEVELOPMENT.md). Репозиторий — https://github.com/Awak3r/it_proj, рабочая и публикуемая ветка — **`codex/labturn-mvp`**. Переход на Actions не требует merge в `main`. Ручной release с ПК/VPS и прежний `pc-release.sh deploy/release` больше не используются.
 
 ## 1. Pipeline и границы доверия
 
-Новый `.github/workflows/deploy.yml` имеет следующий контракт:
+Production запускается через [.github/workflows/deploy.yml](../.github/workflows/deploy.yml), проверки — через reusable [checks.yml](../.github/workflows/checks.yml). Seed и тесты работают на изолированном GitHub-hosted runner, не на VPS. Последний подтверждённый релиз — в [STATUS.md](STATUS.md).
 
-1. Запускается на **push только в `codex/labturn-mvp`**; также объявлен `workflow_dispatch`.
-2. Вызывает reusable `.github/workflows/checks.yml`: Go с PostgreSQL, UI и release-тесты. Seed и тесты работают на изолированном GitHub-hosted runner, не на VPS.
-3. После успешных проверок собирает обычный Dockerfile на GitHub-hosted Ubuntu под **`linux/amd64`**, с Buildx `--load`.
-4. Сохраняет gzip `docker save` как artifact **`image.tar.gz`** текущего прогона.
-5. Отдельный deployment job использует GitHub environment **`production`**, скачивает artifact этого прогона, выполняет SSH preflight и передаёт gzip receiver на VPS.
+### Устройство CI
+
+Этот контракт реализован в workflow-файлах. До первого нового Actions-прогона он **не является подтверждением production-публикации или измеренного ускорения**:
+
+1. Push только в `codex/labturn-mvp`; также предусмотрен `workflow_dispatch` (ограничение UI ниже).
+2. Reusable `checks.yml` сначала запускает лёгкий job `changes`: определение полного диапазона изменений, проверка локальных ссылок, unit-тесты CI/release tooling. Затем **`test` и `image` идут параллельно**; `test` проверяет Go/PostgreSQL и UI.
+3. `image` выполняет **одну сборку `linux/amd64`** через `docker/build-push-action` с GHA cache. Повторная сборка образа в deployment не нужна.
+4. Artifact `image.tar.gz` экспортируется только при release-вызове через **`workflow_call`**, не при самостоятельном проверочном запуске.
+5. Deployment ждёт **все проверки**, использует environment `production`, artifact того же прогона, pinned SSH host, preflight, backup и rollback receiver.
+6. Docs-only изменения (`README.md`, `AGENTS.md`, файлы `.md/.txt/.csv` в `docs/`) пропускают тяжёлые test/image jobs и deploy, но проходят лёгкие проверки. Любой неизвестный путь, пустой diff, недоступная история или ручной запуск включает полный pipeline. В push учитывается весь диапазон before→HEAD, в PR — base→проверяемый merge commit. При переименовании учитываются и старый, и новый пути. Внешние ссылки и heading anchors не проверяются.
+7. Устаревшие test/build прогоны отменяются; начатый deployment **никогда не прерывается** новым push. Сериализация deploy и запрет отмены сохраняются отдельно от concurrency проверок.
+8. Внутри production lock перед передачей образа проверяется актуальность SHA через GitHub API. Если в ветке уже есть новые изменения приложения или история расходится, старый релиз пропускается. Более новые docs-only коммиты не мешают выпуску проверенного приложения. При недоступном API, пустом/неполном diff проверка не разрешает устаревший релиз. Это защищает от переупорядочивания jobs на runners; при отмене нужного прогона повторяют полный workflow актуального SHA.
+
+Кэш Buildx (`type=gha`, scope `labturn-amd64`) изолируется GitHub по refs; в образе и артефакте нет production-секретов. Для уже gzip-сжатого artifact дополнительное ZIP-сжатие отключено. Выигрыш времени ещё не измерен; сравнивайте успешные прогоны после прогрева кэша.
+
+Повторять release следует **полным rerun workflow**, а не только упавшим job: имя artifact и образа включает `run_attempt`, и deploy должен получить образ текущей попытки.
 
 Имя публикуемого образа строго привязано к прогону:
 
@@ -22,7 +33,7 @@ labturn-app:gh-<40hex SHA>-<run_id>-<attempt>
 
 **Важно:** кнопка ручного `workflow_dispatch` доступна в UI, когда workflow присутствует в default branch. Пока workflow находится только в `codex/labturn-mvp`, основной способ запуска — push в эту ветку. Не делайте merge в `main` ради кнопки и не обещайте её наличие до такого изменения.
 
-На момент подготовки документа новый процесс ещё не опубликован/не выпущен. Родитель должен завершить два коммита и push; после этого проверяются фактические remote SHA, workflow и его результат. Само наличие инструкции не означает успешный прогон Actions.
+Наличие документации или зелёные checks без успешного deployment job не подтверждают выпуск. Новый CI-дизайн выше не приписывается уже подтверждённому production-релизу.
 
 ## 2. Однократная настройка GitHub владельцем или уполномоченным локальным агентом
 
@@ -143,11 +154,8 @@ ssh ubuntu@92.5.236.71 'cd /home/ubuntu/labturn/source && bash scripts/compose-p
 
 Не запускайте вручную receiver для обхода неуспешного workflow. При ошибке проверьте результат rollback и фактический статус, затем исправляйте процесс через согласованный push/повтор Actions. Реальный Telegram-вход и телефонная safe-area проверка требуют участия владельца; CI этого не заменяет.
 
-## 6. Незавершённые шаги на момент передачи
+## 6. Незакрытые операционные вопросы
 
-- GitHub ещё не содержит нового опубликованного commit/release. Родитель готовит два коммита и push в `codex/labturn-mvp`; фактические SHA нужно проверить после push.
-- На VPS нет готовых Git push credentials. Владельцу передан **публичный временный read-write GitHub deploy key** с просьбой добавить его в репозиторий. Это ключ для исходящего push с VPS в GitHub, **не** CI-ключ для входа Actions на VPS. После успешного push родитель удалит временный private key с VPS; дальнейший отзыв публичного deploy key согласовать с владельцем.
-- Пользовательская авторизация `gh`, environment/branch restrictions и secret `VPS_SSH_KEY` на ПК не предполагаются настроенными: подтвердить их отдельно.
-- Первый успешный Actions deploy, локальная WSL-среда и телефон после CSS safe-area патча ещё должны быть подтверждены.
+Текущие ограничения и ручные проверки ведутся только в [STATUS.md](STATUS.md). Однократная настройка выше сохранена для аудита/восстановления доступа, не означает необходимость заново создавать ключи после успешного релиза. Проверяйте существующий доступ и ограничения до изменений.
 
-Не устраняйте эти блокеры force push, merge в `main`, созданием новой ветки без спроса или переносом production-секретов.
+Временный migration deploy key VPS → GitHub не является CI-ключом Actions → VPS. Если он ещё существует, его отзыв/удаление согласовать отдельно; эта очистка документации не подтверждает отзыв. Не переносить его private key на ПК или в `VPS_SSH_KEY`.

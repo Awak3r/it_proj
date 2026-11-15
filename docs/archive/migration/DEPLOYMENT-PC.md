@@ -1,6 +1,8 @@
 # LabTurn: локальная разработка на Windows ПК через WSL2
 
-Разработка, IDE, Go/Node, тесты и тестовые данные переносятся с VPS на ПК. **Production публикуется только через [GitHub Actions](DEPLOYMENT-GITHUB.md)** из ветки `codex/labturn-mvp`. Ручной release с ПК по SSH больше не используется; прежние команды `pc-release.sh deploy/release` отменены. Snapshot-архив больше не является основным источником проекта.
+> Исторический документ: результаты и незавершённые шаги относятся к описанному этапу, не к текущему HEAD. Текущий [статус](../../STATUS.md).
+
+Разработка, IDE, Go/Node, тесты и тестовые данные переносятся с VPS на ПК. **Production публикуется только через [GitHub Actions](../../DEPLOYMENT.md)** из ветки `codex/labturn-mvp`. Ручной release с ПК по SSH больше не используется; прежние команды `pc-release.sh deploy/release` отменены. Snapshot-архив больше не является основным источником проекта.
 
 Инструкция для продолжающего работу агента: [LOCAL-AGENT-HANDOFF.md](LOCAL-AGENT-HANDOFF.md).
 
@@ -112,13 +114,13 @@ python3 -B -m unittest discover -s scripts -p 'test_*.py'
 (cd web && BASE_URL=http://127.0.0.1:8080 npm test)
 ```
 
-UI-тестам нужен запущенный локальный dev-app с demo-данными; они изменяют оценки и очередь. Перед UI-прогоном после правок пересоберите/обновите локальное приложение, чтобы тестировать новый код. Набор release-тестов уточняйте по фактическому `checks.yml`. Нативный Go/Vite dev-запуск описан в [DEVELOPMENT.md](DEVELOPMENT.md).
+UI-тестам нужен запущенный локальный dev-app с demo-данными; они изменяют оценки и очередь. Перед UI-прогоном после правок пересоберите/обновите локальное приложение, чтобы тестировать новый код. Набор release-тестов уточняйте по фактическому `checks.yml`. Нативный Go/Vite dev-запуск описан в [DEVELOPMENT.md](../../DEVELOPMENT.md).
 
 Старые указания в DEVELOPMENT/QA про тесты «на сервере» относятся к прежнему процессу: **теперь все seed/UI/Go-тесты выполняются на ПК или GitHub-hosted runner, никогда на production VPS**.
 
 ## 5. Публикация и завершение переноса
 
-После разрешённых владельцем commit/push в `codex/labturn-mvp` проверки, сборку и публикацию выполняет Actions: [DEPLOYMENT-GITHUB.md](DEPLOYMENT-GITHUB.md). Push не равен успешному deploy — нужно проверить результат deployment job и выпущенный SHA.
+После разрешённых владельцем commit/push в `codex/labturn-mvp` проверки, сборку и публикацию выполняет Actions: [DEPLOYMENT-GITHUB.md](../../DEPLOYMENT.md). Push не равен успешному deploy — нужно проверить результат deployment job и выпущенный SHA.
 
 На VPS разрешены операционные SSH-чтения health/ps/logs. Не запускайте там build, seed, UI-тесты, IDE или language servers. Не удаляйте `/home/ubuntu/labturn/source`: серверу по-прежнему нужны Compose, Caddyfile и `.env`. После успешного переноса владелец вручную закрывает remote Zed; агент не должен убивать пользовательское SSH/редакторное соединение.
 

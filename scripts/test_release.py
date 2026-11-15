@@ -26,7 +26,7 @@ def module(name, filename):
 
 
 receiver = module('labturn_receiver', 'deploy-image.py')
-exporter = module('labturn_exporter', 'export-pc-source.py')
+
 ci = module('labturn_ci', 'ci-ssh-command.py')
 authorizer = module('labturn_authorizer', 'authorize-ci-key.py')
 
@@ -144,10 +144,6 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(sum('up' in call for call in calls), 2)
         self.assertFalse(any('pg_restore' in call for call in calls))
 
-    def test_export_allows_only_reviewed_untracked_additions(self):
-        self.assertNotIn('scripts/credentials.json', exporter.LOCAL_SOURCE_ADDITIONS)
-        self.assertNotIn('docs/database.sql.gz', exporter.LOCAL_SOURCE_ADDITIONS)
-        self.assertIn('scripts/build-image.sh', exporter.LOCAL_SOURCE_ADDITIONS)
 
     def test_same_pointer_still_reconciles_the_running_image(self):
         calls = []
@@ -215,20 +211,6 @@ if args[:2]==["image","inspect"]: sys.exit(1)
             with self.subTest(value=value), self.assertRaises(ValueError):
                 authorizer.restricted_line(value)
 
-    def test_export_excludes_secrets_and_build_artifacts(self):
-        for name in ['.env', '.env.local', 'web/.env.production', '.git/config',
-                     'backups/data.dump', 'web/node_modules/a.js', 'web/dist/index.html',
-                     'web/test-results/screenshot.png', 'backend/server.key', '../outside',
-                     '/etc/passwd', 'private-notes.txt']:
-            with self.subTest(name=name):
-                self.assertFalse(exporter.public_source(name))
-
-    def test_export_includes_public_source(self):
-        for name in ['.env.example', '.dockerignore', 'compose.production.yaml',
-                     'backend/main.go', 'web/src/style.css', 'scripts/build-image.sh',
-                     'docs/DEPLOYMENT-PC.md']:
-            with self.subTest(name=name):
-                self.assertTrue(exporter.public_source(name))
 
 
 if __name__ == '__main__':

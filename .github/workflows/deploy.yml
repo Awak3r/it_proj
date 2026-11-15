@@ -8,58 +8,40 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: labturn-production
-  cancel-in-progress: false
 
 jobs:
   checks:
     uses: ./.github/workflows/checks.yml
-
-  build:
-    needs: checks
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      IMAGE: labturn-app:gh-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: docker/setup-buildx-action@v3
-      - name: Build linux/amd64 image on the GitHub runner
-        run: bash scripts/build-image.sh "$IMAGE"
-      - name: Export the single versioned image
-        run: |
-          set -euo pipefail
-          docker image save "$IMAGE" | gzip -1 > image.tar.gz
-          sha256sum image.tar.gz > image.tar.gz.sha256
-      - uses: actions/upload-artifact@v4
-        with:
-          name: labturn-image-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            image.tar.gz
-            image.tar.gz.sha256
-          retention-days: 3
-          if-no-files-found: error
+    with:
+      release: true
 
   deploy:
-    needs: build
-    if: github.ref == 'refs/heads/codex/labturn-mvp'
+    needs: checks
+    if: needs.checks.outputs.runtime == 'true' && github.ref == 'refs/heads/codex/labturn-mvp'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: production
+    concurrency:
+      group: labturn-production
+      cancel-in-progress: false
     env:
       IMAGE: labturn-app:gh-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Reject superseded application releases
+        id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci.py current
       - uses: actions/download-artifact@v4
+        if: steps.current.outputs.current == 'true'
         with:
           name: labturn-image-${{ github.run_id }}-${{ github.run_attempt }}
           path: release
       - name: Publish prebuilt image over restricted SSH
+        if: steps.current.outputs.current == 'true'
         env:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
         run: |

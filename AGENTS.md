@@ -1,6 +1,8 @@
 # LabTurn agent instructions
 
-- Read `docs/LOCAL-AGENT-HANDOFF.md` before continuing work after migration.
+- Read `README.md`, `docs/DEVELOPMENT.md`, `docs/DEPLOYMENT.md`, `docs/API.md`
+  and `docs/STATUS.md` before continuing work. `docs/archive/` is historical
+  evidence, not current operating instructions or proof of a new validation run.
 - Develop and run Go/Node/Docker builds, seed and UI tests on the owner's PC/WSL or
   GitHub-hosted runners, never on the production VPS.
 - The trusted working/deploy branch is `codex/labturn-mvp`. Do not merge into main,
@@ -17,6 +19,8 @@
 - Keep backup and rollback safeguards. Image rollback does not roll back schema.
   Do not delete volumes or run data-changing UI tests on production.
 - Production URL: https://labturn.awak3r.ru; owner/root Telegram ID: 1297278646.
-- Deployment and one-time CI access setup: `docs/DEPLOYMENT-GITHUB.md`.
+- Deployment and one-time CI access setup: `docs/DEPLOYMENT.md`.
+- Preserve the owner's `.local/` sandbox and data; operational commands are in
+  `docs/LOCAL-SANDBOX.md`. Run destructive regression suites on separate fixtures.
 - Do not terminate the owner's remote Zed/SSH session during migration; ask them
   to close it once the local checkout has been confirmed.

@@ -1,94 +1,110 @@
-# LabTurn · разработка и запуск
+# Локальная разработка и проверки
 
-Go HTTP API + PostgreSQL 17 + React/TypeScript/Vite. Go раздаёт готовый frontend с того же origin, отдельный frontend-сервер в production не нужен. Redis не требуется.
+Go HTTP API + PostgreSQL 17 + React/TypeScript/Vite; Redis не требуется. Разработка, IDE, build, seed и UI-тесты — на ПК/WSL или GitHub-hosted runner, **никогда на production VPS**. Публикация — по [DEPLOYMENT.md](DEPLOYMENT.md); результаты и ручные проверки — в [STATUS.md](STATUS.md).
 
-## Первый запуск
+## Среда и исходники
 
-1. Установите Docker с Compose.
-2. Скопируйте `.env.example` в `.env`.
-3. Заполните `BOT_TOKEN` из BotFather, `ROOT_TELEGRAM_IDS` (Telegram ID **человека**, не бота), `POSTGRES_PASSWORD` (например, результат `openssl rand -hex 24`).
-4. Выполните `docker compose up --build -d`.
-5. Проверьте `curl http://127.0.0.1:8080/api/health`.
+- Windows: WSL2 Ubuntu (`wsl --install -d Ubuntu` из PowerShell администратора; `wsl --list --verbose` должен показывать версию 2).
+- Docker Desktop: Linux containers, WSL2 engine и WSL Integration для Ubuntu. Нужны Git, Bash, Python 3, Go 1.24.x и Node.js 22; сверяйте версии с текущими файлами проекта/CI. `gh` нужен для Actions, не для локального запуска.
+- Храните checkout в файловой системе WSL, не `/mnt/c`. Текущий sandbox владельца находится в `/home/bogdanoff/study/labturn`; его нативные процессы и данные описаны отдельно в [LOCAL-SANDBOX.md](LOCAL-SANDBOX.md).
 
-Сервис по умолчанию доступен только на localhost. Для Telegram нужен HTTPS:
-
-- Укажите DNS-запись домена на сервер; откройте 80 и 443.
-- Заполните `PUBLIC_HOST` и `APP_URL` в `.env`.
-- Выполните `docker compose --profile https up --build -d`.
-- В @BotFather настройте Mini App / кнопку меню бота `@labturn_bot` на `APP_URL`.
-- Откройте бота, нажмите Start, затем кнопку приложения. В событии можно запросить право на уведомления.
-
-Проверка подписи Telegram выполняется сервером; срок initData — 24 часа. После истечения нужно заново открыть Mini App. Пароли и клиентские роли не используются для авторизации.
-
-## Локальная разработка
-
-Для отдельной локальной базы/бота можно поставить `DEV_AUTH=true`, `ROOT_TELEGRAM_IDS=1001`, оставить `BOT_TOKEN` пустым и выполнить `docker compose up --build -d`. Только этот режим разрешает заголовок `X-Dev-User`. В интерфейсе появляется переключатель пользователей. **Не включайте его на публичном сервере или с реальными данными.**
-
-`python3 scripts/seed-demo.py` создаёт пример только в пустой базе и только если сервер подтвердил DEV_AUTH. Root: 1001, преподаватель: 2001, студенты: 3001–3003. Реальные Telegram-сообщения для demo не отправляйте: BOT_TOKEN должен оставаться пустым.
-
-Для разработки без контейнера приложения:
+Для нового checkout:
 
 ```sh
-cd web
-npm ci
-npm run build
-# Для горячей перезагрузки: npm run dev (проксирует /api на :8080).
+git clone --branch codex/labturn-mvp --single-branch https://github.com/Awak3r/it_proj.git labturn
+cd labturn
+git --no-optional-locks status --short
+git branch --show-current
+git --no-pager log -5 --oneline
+git rev-parse HEAD
 ```
 
-В другом терминале:
+Существующий checkout не перезаписывать и не reset/clean; сначала сохранить работу, проверить remote без встроенного токена и ветку. Обновление — fast-forward при чистом дереве. Не создавать ветки, не force-push и не merge в `main` без согласия. Перед правками прочитать [AGENTS.md](../AGENTS.md), README, API и текущий статус. Архивный migration handoff не является обязательной инструкцией.
+
+## Безопасный Docker и конфигурация
+
+**До Docker-команд** проверить:
 
 ```sh
+docker context show
+docker context ls
+docker context inspect
+```
+
+Endpoint должен вести в локальный Docker Desktop, не SSH/VPS; имя `default` этого не гарантирует. Учитывайте `DOCKER_HOST`, `DOCKER_CONTEXT` и CLI flags. При неясном endpoint остановитесь. После проверки: `docker version`, `docker buildx version`, `docker compose version`.
+
+Создайте собственную локальную `.env`, не перезаписывая существующую:
+
+```dotenv
+POSTGRES_PASSWORD=local-only-change-me
+ROOT_TELEGRAM_IDS=1001
+DEV_AUTH=true
+BOT_TOKEN=
+APP_URL=
+```
+
+Это только локальные синтетические credentials. Не читать/копировать серверную `.env`, ключи и дампы; не использовать production URL/DSN. `DEV_AUTH`/`X-Dev-User` — только localhost. Пустой `BOT_TOKEN` исключает реальные сообщения.
+
+```sh
+docker compose up --build -d
+curl --fail http://127.0.0.1:8080/api/health
+curl --fail http://127.0.0.1:8080/api/config
+```
+
+Убедитесь, что app локален, `dev_auth=true`, БД отдельная и **пустая**, затем явно создайте demo:
+
+```sh
+BASE_URL=http://127.0.0.1:8080 python3 scripts/seed-demo.py
+```
+
+Seed изменяет данные. Demo: root `1001`, преподаватель `2001`, студенты `3001–3003`. Не применять seed/reset или data-changing UI suite к production и сохраняемому sandbox. Не удалять volumes (`down -v`) без отдельного согласия.
+
+## Нативный запуск без контейнера app
+
+Нужна подготовленная отдельная локальная PostgreSQL. Сохраняемый PostgreSQL 16 sandbox — исключение конкретного ПК, не замена CI PostgreSQL 17. Не запускайте второе приложение поверх занятого порта/БД.
+
+```sh
+(cd web && npm ci && npm run build)
+# backend, с DSN отдельной локальной dev-БД:
 cd backend
-export DATABASE_URL='postgres://labqueue:password@localhost:5432/labqueue?sslmode=disable'
-export ROOT_TELEGRAM_IDS=1001 DEV_AUTH=true
-# BOT_TOKEN не задавать для демонстрационных пользователей.
+export DATABASE_URL='postgres://labqueue:local-only-change-me@127.0.0.1:5432/labqueue?sslmode=disable'
+export ROOT_TELEGRAM_IDS=1001 DEV_AUTH=true BOT_TOKEN=
+export LISTEN_ADDR=127.0.0.1:8080
 go run .
 ```
 
-## Проверки
+DSN — пример для заранее созданной БД, не адрес автоматически запущенного сервиса. Compose не публикует порт PostgreSQL. Для hot reload в отдельном терминале `cd web && npm run dev` (проксирует `/api` на `:8080`).
+
+## Сборка и тесты
+
+Контейнерная сборка без публикации, только после проверки Docker endpoint:
 
 ```sh
-cd backend
-go test -race ./...
-go vet ./...
-TEST_DATABASE_URL='postgres://.../test_database?sslmode=disable' go test -race -count=1 -v ./...
+bash scripts/build-image.sh labturn-app:local-check
 ```
 
-Интеграционный тест создаёт уникальную схему и удаляет только её. Проверяет права, подпись Telegram, параллельную запись, единственный вызов, устаревшие запросы завершения, конфликт оценок, root-перемещение, одно перемешивание, отмену, закрытие записи и события, изоляцию групп. Нагрузочный сценарий: 100 пользователей / 10 событий, 100 записей и 100 снимков состояния.
+Она собирает Dockerfile под `linux/amd64` через Buildx `--load`, без SSH/deploy. Это не полный test suite; вручную доставлять образ на VPS нельзя.
 
-UI-проверки запускаются на сервере с demo-данными; они изменяют тестовые оценки и очередь:
+Go-интеграциям нужна **отдельная тестовая БД**, не dev/sandbox. Если имя и порт свободны, на проверенном локальном Docker:
 
 ```sh
-cd web
-npm ci
-npx playwright install chromium
-npm test
-# Для системного Chromium: CHROMIUM_PATH=/usr/bin/chromium npm test
+docker run -d --name labturn-local-tests \
+  -e POSTGRES_USER=labqueue -e POSTGRES_PASSWORD=labqueue \
+  -e POSTGRES_DB=labturn_test \
+  -p 127.0.0.1:5433:5432 postgres:17-alpine
 ```
 
-## Надёжность и ограничения первой версии
-
-- Активная запись пользователя и вызванный студент защищены уникальными индексами PostgreSQL.
-- Изменяющие команды используют транзакцию и общий advisory lock. Для масштаба MVP это намеренно упрощает согласованность. При росте нагрузки заменить общую блокировку блокировками событий/ведомостей.
-- `Idempotency-Key` привязан к пользователю и хешу команды. Повтор возвращает сохранённый ответ; повтор ключа с другим телом — 409.
-- Оценки используют версии; конфликт — 409, пользователь отменяет локальную правку, перечитывает оценку и вводит её заново.
-- Очередь и оценки хранятся в PostgreSQL, а не в памяти процесса. Фоновый worker отправляет transactional outbox после commit, до восьми попыток с задержками. Доставка Telegram — at-least-once: после аварии на границе отправки/commit возможно повторное сообщение.
-- Изменения ведомости, очередей и прав приходят через SSE без перезагрузки. При недоступности SSE включается опрос каждые 3 секунды. Возврат в Telegram/вкладку и восстановление сети инициируют переподключение и свежий снимок. 5 секунд — целевой показатель, не гарантия при плохой связи или высокой нагрузке.
-- PostgreSQL LISTEN использует одно отдельное соединение на экземпляр Go-сервера, без соединения БД на каждого SSE-клиента. Прокси БД для этого соединения должен поддерживать session-level LISTEN (transaction pooling не подходит). После разрыва LISTEN переподключается и инициирует полное обновление клиентов. Прямые ручные SQL-правки требуют отдельного NOTIFY либо переподключения клиентов.
-- `schema.sql` — историческая идемпотентная начальная схема, не редактируется для upgrade. Startup применяет её и упорядоченные `backend/migrations/*.sql` в транзакции под advisory lock; выполненные версии фиксируются в `schema_migrations`. Миграция `0001_weighted_grading.sql` добавляет вес и обязательность с прежними значениями по умолчанию `1`/`true`. Изменение аддитивное: старый бинарник/INSERT сохраняет совместимость; откат образа не удаляет колонки и не откатывает данные. Новые изменения добавлять следующей миграцией, не правкой уже применённой и не ручным SQL на production.
-- История оценок и действий доступна root. При переводе студента старые оценки сохраняются у старых работ; перенос оценок пока выполняется вручную администратором БД, автоматического сопоставления работ нет.
-- Бот использует кнопку меню Mini App и sendMessage; обработчик диалоговых команд бота не нужен. Меню настраивается в BotFather.
-- `requests`, `audit`, закрытые записи и outbox пока не очищаются автоматически. Срок хранения и отдельные страницы истории можно добавить после эксплуатации.
-
-## Резервная копия и восстановление
+Дождитесь готовности PostgreSQL. Из корня проекта:
 
 ```sh
-mkdir -p backups
-docker compose exec -T db pg_dump -U labqueue -d labqueue -Fc > backups/labturn.dump
-# Проверка восстановления в отдельную БД, без изменения рабочей:
-docker compose exec -T db createdb -U labqueue labturn_restore
-docker compose exec -T db pg_restore -U labqueue -d labturn_restore < backups/labturn.dump
-docker compose exec -T db psql -U labqueue -d labturn_restore -c 'SELECT count(*) FROM events;'
+(cd backend && TEST_DATABASE_URL='postgres://labqueue:labqueue@127.0.0.1:5433/labturn_test?sslmode=disable' go test -race -count=1 ./... && go vet ./... && go build -o /tmp/labturn-check .)
+python3 -B -m unittest discover -s scripts -p 'test_*.py'
+python3 scripts/ci.py docs
+bash -n scripts/build-image.sh scripts/compose-production.sh
+(cd web && npm ci && npm run build && npx playwright install chromium)
+(cd web && BASE_URL=http://127.0.0.1:8080 npm test)
 ```
 
-Храните копии вне сервера приложения; настроить ежедневный запуск и срок хранения нужно на хостинге. При полном восстановлении остановите app, восстановите БД из проверенной копии и запустите app. Не публикуйте дампы: они содержат пользовательские данные.
+UI suite изменяет очередь и оценки: используйте свежий отдельный локальный dev-app с demo-данными, пересобранный после правок. Для системного Chromium можно задать `CHROMIUM_PATH=/usr/bin/chromium`. Go DB-тесты создают/удаляют собственные схемы; недоступная DB и пропуск интеграций не равны успешной приёмке.
+
+Фактический CI — [.github/workflows/checks.yml](../.github/workflows/checks.yml); параллельные тесты и единственная сборка образа описаны в [DEPLOYMENT.md](DEPLOYMENT.md). Фиксируйте команды, SHA, exit status и пропуски, не переносите исторический PASS на новый код.

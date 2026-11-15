@@ -1,5 +1,7 @@
 # Handoff: агенту LabTurn на ПК
 
+> Исторический документ: результаты и незавершённые шаги относятся к описанному этапу, не к текущему HEAD. Текущий [статус](../../STATUS.md).
+
 Следуйте этой инструкции после переноса разработки с VPS на Windows ПК. Это контекст и порядок работы, **не разрешение автоматически коммитить/пушить, создавать ключи или менять production**. Действия с доступами и публикацией выполняйте только в рамках согласия владельца.
 
 ## 1. Цель и неизменяемые границы
@@ -16,11 +18,11 @@
 1. Откройте WSL Ubuntu и локальный каталог `~/src/labturn` (не `/mnt/c` и не remote VPS workspace).
 2. Получите репозиторий по инструкции [DEPLOYMENT-PC.md](DEPLOYMENT-PC.md), именно ветку `codex/labturn-mvp`. Если checkout уже есть, сначала сохраните пользовательскую работу и проверьте remote/ветку; не применяйте reset/clean.
 3. Прочитайте применимые `AGENTS.md`, если они есть в checkout или родительских каталогах, затем:
-   - [README](../README.md);
-   - [локальную разработку](DEPLOYMENT-PC.md) и [DEVELOPMENT.md](DEVELOPMENT.md);
-   - [API.md](API.md), особенно авторизацию, идемпотентность и SSE;
-   - [QA-отчёт](qa/REPORT.md), [известные дефекты](qa/BUGS.md), [SSE](qa/SSE.md);
-   - [DEPLOYMENT-GITHUB.md](DEPLOYMENT-GITHUB.md);
+   - [README](../../../README.md);
+   - [локальную разработку](DEPLOYMENT-PC.md) и [DEVELOPMENT.md](../../DEVELOPMENT.md);
+   - [API.md](../../API.md), особенно авторизацию, идемпотентность и SSE;
+   - [QA-отчёт](../qa/REPORT.md), [известные дефекты](../qa/BUGS.md), [SSE](../qa/SSE.md);
+   - [DEPLOYMENT-GITHUB.md](../../DEPLOYMENT.md);
    - фактические `.github/workflows/deploy.yml`, `checks.yml` и сборочные/release-тесты.
 4. До Docker-команд проверьте `docker context show/ls/inspect` и переменные переопределения endpoint. Docker должен быть **локальным Docker Desktop**, не VPS. При сомнении остановитесь.
 5. Установите фактическую ревизию без вывода секретов:
@@ -85,7 +87,7 @@
 
 ## 5. CI-доступы и публикация
 
-Полные действия: [DEPLOYMENT-GITHUB.md](DEPLOYMENT-GITHUB.md). Краткий контракт:
+Полные действия: [DEPLOYMENT-GITHUB.md](../../DEPLOYMENT.md). Краткий контракт:
 
 - `deploy.yml`: push только `codex/labturn-mvp`, reusable `checks.yml` (Go/PostgreSQL/UI/release), build на GitHub-hosted Ubuntu, artifact `image.tar.gz`, отдельный deployment job с environment `production`.
 - Единственный настраиваемый secret — environment `production` → `VPS_SSH_KEY`. Нужна пользовательская `gh auth` с необходимыми правами; доступы не предполагаются существующими.

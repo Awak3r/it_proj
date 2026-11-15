@@ -1,6 +1,8 @@
 # Приёмка MVP: AC-01–AC-28, FR-15 и FR-16
 
-Дата проверки: **15 ноября 2026**. Источник требований: [README, разделы 9 и 13](../../README.md).
+> Исторический документ: результаты и незавершённые шаги относятся к описанному этапу, не к текущему HEAD. Текущий [статус](../../STATUS.md).
+
+Дата проверки: **15 ноября 2026**. Источник требований: [README, разделы 9 и 13](../SPEC-v0.3.md).
 
 ## Ревизия и границы результата
 
@@ -27,11 +29,11 @@
 
 Обозначения и файлы:
 
-- **A/Имя** = `TestAcceptanceИмя` в [backend/acceptance_test.go](../../backend/acceptance_test.go).
-- **I/имя** = `TestIntegration/имя` в [backend/integration_test.go](../../backend/integration_test.go); в Go-выводе пробелы заменяются `_`.
-- **N/Имя** = `TestFR15Имя` в [backend/notification_eta_test.go](../../backend/notification_eta_test.go).
-- **UI-A** = [web/tests/acceptance.spec.ts](../../web/tests/acceptance.spec.ts), **UI-E** = [web/tests/notification-eta.spec.ts](../../web/tests/notification-eta.spec.ts). Эти новые браузерные тесты перехватывают API и проверяют настоящий интерфейс на синтетических снимках/командах, **не backend persistence или реальный SSE**.
-- **UI-App** = [web/tests/app.spec.ts](../../web/tests/app.spec.ts), **UI-Recovery** = [web/tests/recovery.spec.ts](../../web/tests/recovery.spec.ts), **UI-Realtime** = [web/tests/realtime.spec.ts](../../web/tests/realtime.spec.ts): работают с настоящим локальным API/БД; отдельные сетевые сбои внедряются перехватом запросов.
+- **A/Имя** = `TestAcceptanceИмя` в [backend/acceptance_test.go](../../../backend/acceptance_test.go).
+- **I/имя** = `TestIntegration/имя` в [backend/integration_test.go](../../../backend/integration_test.go); в Go-выводе пробелы заменяются `_`.
+- **N/Имя** = `TestFR15Имя` в [backend/notification_eta_test.go](../../../backend/notification_eta_test.go).
+- **UI-A** = [web/tests/acceptance.spec.ts](../../../web/tests/acceptance.spec.ts), **UI-E** = [web/tests/notification-eta.spec.ts](../../../web/tests/notification-eta.spec.ts). Эти новые браузерные тесты перехватывают API и проверяют настоящий интерфейс на синтетических снимках/командах, **не backend persistence или реальный SSE**.
+- **UI-App** = [web/tests/app.spec.ts](../../../web/tests/app.spec.ts), **UI-Recovery** = [web/tests/recovery.spec.ts](../../../web/tests/recovery.spec.ts), **UI-Realtime** = [web/tests/realtime.spec.ts](../../../web/tests/realtime.spec.ts): работают с настоящим локальным API/БД; отдельные сетевые сбои внедряются перехватом запросов.
 
 ## Матрица критериев
 
@@ -46,7 +48,7 @@
 | AC-07 | FIFO соответствует времени/ID, включая равные timestamps; фактическая последовательность вызовов | A/FIFOAndTiedJoinOrder; `TestQueueInsertion/ties stable` в `backend/queue_test.go` | **Авто PASS** |
 | AC-08 | Реальные оценки дают 1/3/5 сданных работ; asc/desc, стабильные равенства; 2/null/архив/другие предметы и группы исключены | A/ScoreOrderOneThreeFive; `TestQueueInsertion` | **Авто PASS**; изменения оценок после записи не меняют зафиксированный score |
 | AC-09 | Root получает одну перестановку всех участников без потерь/дубликатов; replay безопасен; второй shuffle отклонён | A/ShufflePermutationSurvivesNewServer; I/random root only once and durable; UI-App `root has management and a single manual shuffle` | **Авто PASS**; не требуется, чтобы случайный порядок обязательно отличался от исходного |
-| AC-10 | После shuffle настоящий процесс приложения завершён через SIGTERM и запущен заново с той же БД; точные entries/order, shuffled-флаг и оценки сохранены для всех ролей; второй shuffle запрещён | `TestAcceptanceShuffleSurvivesOSProcessRestart` в [backend/acceptance_restart_test.go](../../backend/acceptance_restart_test.go); A/ShufflePermutationSurvivesNewServer | **Авто PASS**: два разных OS-процесса вызывают настоящий `main()` и обслуживают реальные HTTP-запросы; БД/данные локальные |
+| AC-10 | После shuffle настоящий процесс приложения завершён через SIGTERM и запущен заново с той же БД; точные entries/order, shuffled-флаг и оценки сохранены для всех ролей; второй shuffle запрещён | `TestAcceptanceShuffleSurvivesOSProcessRestart` в [backend/acceptance_restart_test.go](../../../backend/acceptance_restart_test.go); A/ShufflePermutationSurvivesNewServer | **Авто PASS**: два разных OS-процесса вызывают настоящий `main()` и обслуживают реальные HTTP-запросы; БД/данные локальные |
 | AC-11 | Новичок после shuffle добавляется в конец, прежний порядок сохраняется | A/ShufflePermutationSurvivesNewServer; I/random root only once and durable | **Авто PASS** |
 | AC-12 | Конкурирующие/повторные вызовы не создают двух called в одном событии; устаревший finish безопасен | I/single current call and stale finish; N/CallNotificationContentAndRecall | **Авто PASS** |
 | AC-13 | Пропущенный студент уходит в конец, called_at очищен, оценки/score не меняются; для неоценённого не создаётся строка оценки | A/SkipPreservesGradesAndProgress; I/skip and newcomers | **Авто PASS** |
@@ -132,7 +134,7 @@
 
 ## Повторение автоматических проверок
 
-Сначала подготовить **отдельные локальные** dev/test PostgreSQL по [DEPLOYMENT-PC.md](../DEPLOYMENT-PC.md); не использовать production URL/DSN. Новые Go fixtures создают отдельную схему на тест и отклоняют нелокальный host/fallback.
+Сначала подготовить **отдельные локальные** dev/test PostgreSQL по [DEPLOYMENT-PC.md](../migration/DEPLOYMENT-PC.md); не использовать production URL/DSN. Новые Go fixtures создают отдельную схему на тест и отклоняют нелокальный host/fallback.
 
 ```sh
 # backend; указать DSN вашей отдельной локальной тестовой БД

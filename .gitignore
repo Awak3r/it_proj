@@ -8,6 +8,8 @@ web/test-results/
 web/playwright-report/
 *.tsbuildinfo
 backend/labqueue
+backend/it_proj
+/labturn
 backups/
 __pycache__/
 *.py[cod]

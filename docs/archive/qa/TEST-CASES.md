@@ -1,5 +1,7 @@
 # QA LabTurn
 
+> Исторический документ: результаты и незавершённые шаги относятся к описанному этапу, не к текущему HEAD. Текущий [статус](../../STATUS.md).
+
 Базовая версия: `3329c37`. Проверяется Go/PostgreSQL + React, не браузерная Sites-демонстрация.
 Методика: [QA Expert](https://github.com/daymade/claude-code-skills/tree/main/qa-expert),
 [Webapp Testing](https://github.com/anthropics/skills/tree/main/skills/webapp-testing),
@@ -58,4 +60,4 @@
 Нет проверки настоящего Telegram WebView, реальной доставки ботом, production HTTPS,
 тайм-аутов мобильной сети, обещания задержки до 5 секунд или полного security-аудита.
 Интеграционные тесты создают и удаляют отдельную схему. UI-тесты требуют dev-сервер
-с данными scripts/seed-demo.py. Команды запуска приведены в ../DEVELOPMENT.md.
+с данными scripts/seed-demo.py. Текущие команды запуска приведены в [DEVELOPMENT.md](../../DEVELOPMENT.md).

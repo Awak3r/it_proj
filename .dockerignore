@@ -1,4 +1,7 @@
 .git
+.local
+backend/it_proj
+/labturn
 .env
 .env.*
 **/.env
@@ -14,5 +17,6 @@ backups
 **/__pycache__
 **/dist
 **/test-results
+**/playwright-report
 **/*.tsbuildinfo
 **/labqueue
