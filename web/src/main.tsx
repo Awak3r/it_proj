@@ -212,8 +212,8 @@ function App() {
   // The selected view can hide account privileges, never grant new ones.
   const me = {
     ...data.me,
-    teacher: role !== "student" && data.me.teacher,
-    root: role !== "student" && data.me.root,
+    teacher: role === "teacher" && (data.me.teacher || !!data.me.root),
+    root: role === "root" && !!data.me.root,
   };
   const teacher = me.teacher || me.root;
   const groups = data.groups.filter((g) => !g.archived);

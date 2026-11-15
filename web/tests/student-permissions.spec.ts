@@ -125,6 +125,34 @@ for (const privilege of ["student", "teacher", "root"] as const) {
   });
 }
 
+for (const teacherFlag of [false, true]) {
+  test(`root account in teacher mode cannot see management or history (teacher=${teacherFlag})`, async ({ page }) => {
+    const state = snapshot("root");
+    state.me.teacher = teacherFlag;
+    await open(page, state);
+    await page.getByRole("button", { name: "Сменить роль" }).click();
+    await page.getByRole("button", { name: "Управление root →", exact: true }).click();
+    await page.locator("nav").getByRole("button", { name: "Управление", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Последние изменения" })).toBeVisible();
+
+    await page.getByRole("button", { name: "Сменить роль" }).click();
+    await page.getByRole("button", { name: "Я преподаватель", exact: true }).click();
+    await expect(page.locator("nav").getByRole("button", { name: "Управление", exact: true })).toHaveCount(0);
+    await expect(page.locator(".audit")).toHaveCount(0);
+    await page.getByRole("button").filter({ has: page.getByRole("heading", { name: "Permission event live", exact: true }) }).click();
+    await expect(page.getByRole("heading", { name: "Управление очередью" })).toBeVisible();
+    await expect(page.locator(".history")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Переместить |^Удалить / })).toHaveCount(0);
+    await page.locator("nav").getByRole("button", { name: "Ведомость", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Добавить работу" })).toBeVisible();
+
+    await page.getByRole("button", { name: "Сменить роль" }).click();
+    await page.getByRole("button", { name: "Управление root →", exact: true }).click();
+    await page.locator("nav").getByRole("button", { name: "Управление", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Последние изменения" })).toBeVisible();
+  });
+}
+
 test("revoking teacher privileges closes an already-open teacher form", async ({ page }) => {
   const state = snapshot("teacher");
   const commands = await open(page, state);
