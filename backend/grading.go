@@ -1,13 +1,11 @@
 package main
 
-// Every group member shares the group's gradebook, including teachers who are
-// also students. Access outside that group requires the current teacher role
-// and exact subject/group assignment. Raw grades, labs and summaries share this
-// predicate so revocations apply to every gradebook representation.
+// Current teachers can read every gradebook. Other group members, including
+// former teachers, retain only their own-group read access. All gradebook
+// representations share this predicate so role revocation applies consistently.
 const visibleLab = `($2 OR
     l.group_id=(SELECT group_id FROM users WHERE id=$1) OR
-    EXISTS(SELECT 1 FROM assignments a JOIN users viewer ON viewer.id=a.teacher_id AND viewer.teacher
-        WHERE a.teacher_id=$1 AND a.group_id=l.group_id AND a.subject_id=l.subject_id))`
+    (SELECT teacher FROM users WHERE id=$1))`
 
 // DIV computes positive half-up rounding directly from the exact ratio, without
 // an intermediate rounded quotient (including at the two-decimal boundary).

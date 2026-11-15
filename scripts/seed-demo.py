@@ -27,7 +27,7 @@ for name in ['Программирование', 'Математический �
 cmd(1001,'role',user_id=2001,enabled=True)
 cmd(2001,'profile',name='Алексей Викторович',group_id=0)
 for subject in range(1,4):
-    cmd(1001,'assignment',teacher_id=2001,subject_id=subject,group_id=1,enabled=True)
+
     for number,name in enumerate(['Основы и практика','Исследование методов','Итоговая работа'],1):
         cmd(2001,'lab',subject_id=subject,group_id=1,number=number,name=name)
 for user,name in [(3001,'Михаил Соколов'),(3002,'Анна Морозова'),(3003,'Даниил Волков')]:

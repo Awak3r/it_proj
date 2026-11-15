@@ -185,16 +185,15 @@ func (s *server) state(w http.ResponseWriter, r *http.Request, uid int64) {
 		writeError(w, e)
 		return
 	}
-	result := map[string]any{"me": me}
+	result := map[string]any{"me": me, "assignments": []any{}}
 	queries := map[string]string{
 		"groups": "SELECT * FROM groups ORDER BY name", "subjects": "SELECT * FROM subjects ORDER BY name",
-		"assignments":     "SELECT * FROM assignments WHERE $2 OR teacher_id=$1",
-		"users":           `SELECT u.* FROM users u WHERE $2 OR u.id=$1 OR u.group_id=(SELECT group_id FROM users WHERE id=$1) OR EXISTS(SELECT 1 FROM assignments a JOIN users viewer ON viewer.id=a.teacher_id AND viewer.teacher WHERE a.teacher_id=$1 AND a.group_id=u.group_id) ORDER BY u.name`,
+		"users":           `SELECT u.* FROM users u WHERE $2 OR u.id=$1 OR u.group_id=(SELECT group_id FROM users WHERE id=$1) OR (SELECT teacher FROM users WHERE id=$1) ORDER BY u.name`,
 		"labs":            `SELECT l.*,l.weight::text AS weight_text FROM labs l WHERE ` + visibleLab + ` ORDER BY number,id`,
 		"grades":          `SELECT g.* FROM grades g JOIN labs l ON l.id=g.lab_id WHERE ` + visibleLab,
 		"grade_summaries": gradeSummariesSQL,
-		"events":          `SELECT e.*, ARRAY(SELECT group_id FROM event_groups WHERE event_id=e.id) AS group_ids, (SELECT name FROM users WHERE id=e.teacher_id) AS teacher_name, (SELECT AVG(EXTRACT(EPOCH FROM (ended_at-called_at)))/60 FROM entries WHERE event_id=e.id AND state='completed' AND called_at IS NOT NULL) AS average_minutes FROM events e WHERE $2 OR (e.teacher_id=$1 AND (SELECT teacher FROM users WHERE id=$1)) OR EXISTS(SELECT 1 FROM event_groups eg WHERE eg.event_id=e.id AND eg.group_id=(SELECT group_id FROM users WHERE id=$1)) ORDER BY e.starts_at DESC`,
-		"entries":         `SELECT q.*,u.name AS user_name,u.group_id FROM entries q JOIN users u ON u.id=q.user_id JOIN events e ON e.id=q.event_id WHERE $2 OR (e.teacher_id=$1 AND (SELECT teacher FROM users WHERE id=$1)) OR EXISTS(SELECT 1 FROM event_groups eg WHERE eg.event_id=e.id AND eg.group_id=(SELECT group_id FROM users WHERE id=$1)) ORDER BY q.position,q.id`,
+		"events":          `SELECT e.*, ARRAY(SELECT group_id FROM event_groups WHERE event_id=e.id) AS group_ids, (SELECT name FROM users WHERE id=e.teacher_id) AS teacher_name, (SELECT AVG(EXTRACT(EPOCH FROM (ended_at-called_at)))/60 FROM entries WHERE event_id=e.id AND state='completed' AND called_at IS NOT NULL) AS average_minutes FROM events e WHERE $2 OR (SELECT teacher FROM users WHERE id=$1) OR EXISTS(SELECT 1 FROM event_groups eg WHERE eg.event_id=e.id AND eg.group_id=(SELECT group_id FROM users WHERE id=$1)) ORDER BY e.starts_at DESC`,
+		"entries":         `SELECT q.*,u.name AS user_name,u.group_id FROM entries q JOIN users u ON u.id=q.user_id JOIN events e ON e.id=q.event_id WHERE $2 OR (SELECT teacher FROM users WHERE id=$1) OR EXISTS(SELECT 1 FROM event_groups eg WHERE eg.event_id=e.id AND eg.group_id=(SELECT group_id FROM users WHERE id=$1)) ORDER BY q.position,q.id`,
 		"audit":           `SELECT * FROM audit WHERE $2 ORDER BY id DESC LIMIT 100`,
 	}
 	for key, sql := range queries {
@@ -271,7 +270,7 @@ func (s *server) command(w http.ResponseWriter, r *http.Request, uid int64) {
 		return
 	}
 	defer tx.Rollback(ctx)
-	// Serialize mutations: consistent event/grade/assignment decisions, including same-key retries.
+	// Serialize mutations: consistent event/grade/role decisions, including same-key retries.
 	if _, e = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(764291)"); e != nil {
 		writeError(w, e)
 		return
@@ -321,8 +320,8 @@ func exists(ctx context.Context, tx pgx.Tx, sql string, args ...any) bool {
 	e := tx.QueryRow(ctx, sql, args...).Scan(&ok)
 	return e == nil && ok
 }
-func (s *server) allowed(ctx context.Context, tx pgx.Tx, uid, subject, group int64) bool {
-	return s.roots[uid] || exists(ctx, tx, "SELECT EXISTS(SELECT 1 FROM assignments a JOIN users u ON u.id=a.teacher_id WHERE a.teacher_id=$1 AND a.subject_id=$2 AND a.group_id=$3 AND u.teacher)", uid, subject, group)
+func (s *server) allowed(ctx context.Context, tx pgx.Tx, uid int64) bool {
+	return s.roots[uid] || exists(ctx, tx, "SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND teacher)", uid)
 }
 func validName(n string) bool { return len(strings.TrimSpace(n)) > 0 && len(n) <= 200 }
 func (s *server) execute(ctx context.Context, tx pgx.Tx, uid int64, c command) error {
@@ -369,11 +368,6 @@ func (s *server) execute(ctx context.Context, tx pgx.Tx, uid int64, c command) e
 		if e := exec("INSERT INTO users(id) VALUES($1) ON CONFLICT DO NOTHING", c.UserID); e != nil {
 			return e
 		}
-		if !c.Enabled {
-			if e := exec("DELETE FROM assignments WHERE teacher_id=$1", c.UserID); e != nil {
-				return e
-			}
-		}
 		return exec("UPDATE users SET teacher=$2 WHERE id=$1", c.UserID, c.Enabled)
 	case "transfer":
 		if !root {
@@ -390,21 +384,18 @@ func (s *server) execute(ctx context.Context, tx pgx.Tx, uid int64, c command) e
 		if !root {
 			return forbidden()
 		}
-		if !c.Enabled {
-			return exec("DELETE FROM assignments WHERE subject_id=$1 AND group_id=$2 AND teacher_id=$3", c.SubjectID, c.GroupID, c.TeacherID)
-		}
-		if !exists(ctx, tx, "SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND teacher)", c.TeacherID) {
-			return fail("Сначала назначьте роль преподавателя")
-		}
-		return exec("INSERT INTO assignments VALUES($1,$2,$3) ON CONFLICT DO NOTHING", c.SubjectID, c.GroupID, c.TeacherID)
+		return fail("Назначения преподавателей упразднены: используйте роль преподавателя")
 	case "lab":
 		if c.ID != 0 {
 			if e := tx.QueryRow(ctx, "SELECT subject_id,group_id FROM labs WHERE id=$1", c.ID).Scan(&c.SubjectID, &c.GroupID); e != nil {
 				return fail("Работа не найдена")
 			}
 		}
-		if !s.allowed(ctx, tx, uid, c.SubjectID, c.GroupID) {
+		if !s.allowed(ctx, tx, uid) {
 			return forbidden()
+		}
+		if !exists(ctx, tx, "SELECT EXISTS(SELECT 1 FROM groups g, subjects s WHERE g.id=$1 AND s.id=$2)", c.GroupID, c.SubjectID) {
+			return fail("Группа или предмет не найдены")
 		}
 		if !validName(c.Name) || c.Number <= 0 {
 			return fail("Укажите номер и название работы")
@@ -422,12 +413,12 @@ func (s *server) execute(ctx context.Context, tx pgx.Tx, uid int64, c command) e
 		}
 		return exec("UPDATE labs SET number=$2,name=$3,archived=$4,weight=COALESCE($5::numeric,weight),required=COALESCE($6::boolean,required) WHERE id=$1", c.ID, c.Number, strings.TrimSpace(c.Name), c.Enabled, weight, c.Required)
 	case "grade":
-		var subject, group int64
+		var group int64
 		var archived bool
-		if e := tx.QueryRow(ctx, "SELECT subject_id,group_id,archived FROM labs WHERE id=$1", c.LabID).Scan(&subject, &group, &archived); e != nil {
+		if e := tx.QueryRow(ctx, "SELECT group_id,archived FROM labs WHERE id=$1", c.LabID).Scan(&group, &archived); e != nil {
 			return fail("Работа не найдена")
 		}
-		if !s.allowed(ctx, tx, uid, subject, group) {
+		if !s.allowed(ctx, tx, uid) {
 			return forbidden()
 		}
 		if archived {
@@ -461,13 +452,10 @@ func (s *server) execute(ctx context.Context, tx pgx.Tx, uid int64, c command) e
 		if root && c.TeacherID != 0 {
 			teacher = c.TeacherID
 		}
-		if !root && !exists(ctx, tx, "SELECT teacher FROM users WHERE id=$1", uid) {
+		if !s.allowed(ctx, tx, uid) {
 			return forbidden()
 		}
 		for _, g := range c.GroupIDs {
-			if !s.allowed(ctx, tx, uid, c.SubjectID, g) {
-				return forbidden()
-			}
 			if !exists(ctx, tx, "SELECT EXISTS(SELECT 1 FROM groups g, subjects s WHERE g.id=$1 AND s.id=$2 AND NOT g.archived AND NOT s.archived)", g, c.SubjectID) {
 				return fail("Группа или предмет в архиве")
 			}

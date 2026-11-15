@@ -125,6 +125,71 @@ for (const privilege of ["student", "teacher", "root"] as const) {
   });
 }
 
+test("teacher can use every group and subject without assignments", async ({ page }) => {
+  const state = snapshot("teacher");
+  state.assignments = [];
+  state.groups.push({ id: 2, name: "Other group", archived: false });
+  state.subjects.push({ id: 2, name: "Other subject", archived: false });
+  state.users.push({ id: 4001, name: "Other group student", group_id: 2, teacher: false });
+  state.labs.push({ ...state.labs[0], id: 2, group_id: 2, subject_id: 2, name: "Other lab" });
+  await open(page, state);
+  await page.getByRole("button", { name: "Сменить роль" }).click();
+  await page.getByRole("button", { name: "Я преподаватель", exact: true }).click();
+  await page.getByRole("button", { name: "Создать событие" }).click();
+  const eventForm = page.getByRole("dialog");
+  await expect(eventForm.getByLabel("Предмет").getByRole("option")).toHaveText(["Test subject", "Other subject"]);
+  await expect(eventForm.getByLabel("Группы (можно выбрать несколько)").getByRole("option")).toHaveText(["Test group", "Other group"]);
+  await eventForm.locator(".icon-button").click();
+  await page.locator("nav").getByRole("button", { name: "Ведомость", exact: true }).click();
+  await page.locator(".filters select").nth(0).selectOption("2");
+  await page.locator(".filters select").nth(1).selectOption("2");
+  await expect(page.getByRole("row").filter({ hasText: "Other group student" }).locator("select.grade")).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Экспорт", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Добавить работу" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Добавить преподавателя", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Добавить назначение", exact: true })).toHaveCount(0);
+  await expect(page.locator("nav").getByRole("button", { name: "Управление", exact: true })).toHaveCount(0);
+});
+
+test("root manages separate teacher and student lists without assignments", async ({ page }) => {
+  const state = snapshot("root");
+  state.users.push({ id: 2001, name: "Existing teacher", teacher: true, group_id: null });
+  const commands: Record<string, unknown>[] = [];
+  await open(page, state);
+  await page.route("**/api/command", async (route) => {
+    const command = route.request().postDataJSON();
+    commands.push(command);
+    expect(command.kind).toBe("role");
+    const user = state.users.find((u) => u.id === command.user_id);
+    if (user) user.teacher = command.enabled;
+    else state.users.push({ id: command.user_id, name: "", teacher: command.enabled, group_id: null });
+    await route.fulfill({ json: { ok: true } });
+  });
+  await page.getByRole("button", { name: "Сменить роль" }).click();
+  await page.getByRole("button", { name: "Управление root →", exact: true }).click();
+  await page.locator("nav").getByRole("button", { name: "Управление", exact: true }).click();
+  const teachers = page.locator("section.panel").filter({ has: page.getByRole("heading", { name: "Преподаватели", exact: true }) });
+  const students = page.locator("section.panel").filter({ has: page.getByRole("heading", { name: "Студенты", exact: true }) });
+  await expect(teachers).toContainText("Existing teacher");
+  await expect(teachers).not.toContainText("Permission viewer");
+  await expect(students).toContainText("Permission viewer");
+  await expect(students).not.toContainText("Existing teacher");
+  await expect(page.getByRole("heading", { name: "Назначения", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Добавить преподавателя", exact: true }).click();
+  await page.getByLabel("Telegram ID", { exact: true }).fill("2002");
+  await page.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await expect(teachers).toContainText("2002");
+  expect(commands).toEqual([{ kind: "role", user_id: 2002, enabled: true }]);
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Отозвать роль преподавателя 2002", exact: true }).click();
+  await expect(teachers).not.toContainText("2002");
+  expect(commands).toEqual([
+    { kind: "role", user_id: 2002, enabled: true },
+    { kind: "role", user_id: 2002, enabled: false },
+  ]);
+});
+
 for (const teacherFlag of [false, true]) {
   test(`teacher mode retains management but hides only audit (teacher=${teacherFlag})`, async ({ page }) => {
     const state = snapshot("root");
@@ -141,7 +206,9 @@ for (const teacherFlag of [false, true]) {
     await expect(page.getByRole("button", { name: "Создать событие" })).toBeVisible();
     await page.locator("nav").getByRole("button", { name: "Управление", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Группы", exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Назначения", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Преподаватели", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Добавить преподавателя", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Назначения", exact: true })).toHaveCount(0);
     await expect(page.locator(".audit")).toHaveCount(0);
     await page.locator("nav").getByRole("button", { name: "События", exact: true }).click();
     await page.getByRole("button").filter({ has: page.getByRole("heading", { name: "Permission event live", exact: true }) }).click();
@@ -158,6 +225,10 @@ for (const teacherFlag of [false, true]) {
     await page.getByRole("button", { name: "Управление root →", exact: true }).click();
     await page.locator("nav").getByRole("button", { name: "Управление", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Последние изменения" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Преподаватели", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Студенты", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Добавить преподавателя", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Назначения", exact: true })).toHaveCount(0);
   });
 }
 

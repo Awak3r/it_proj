@@ -60,8 +60,13 @@ func (s *server) exportGradebook(w http.ResponseWriter, r *http.Request, uid int
 	}
 	defer tx.Rollback(ctx)
 
-	if !s.allowed(ctx, tx, uid, subjectID, groupID) {
+	if !s.allowed(ctx, tx, uid) {
 		writeError(w, forbidden())
+		return
+	}
+
+	if !exists(ctx, tx, "SELECT EXISTS(SELECT 1 FROM groups g, subjects s WHERE g.id=$1 AND s.id=$2)", groupID, subjectID) {
+		writeError(w, fail("Группа или предмет не найдены"))
 		return
 	}
 

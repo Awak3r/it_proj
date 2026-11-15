@@ -197,7 +197,7 @@ func TestWeightedLabMetadata(t *testing.T) {
 		request(2001, fmt.Sprintf(`{"kind":"lab","id":1,"number":1,"name":"Valid","weight":%s}`, weight), 200)
 	}
 	request(3001, `{"kind":"lab","id":1,"number":1,"name":"No","weight":2}`, 403)
-	request(2001, `{"kind":"lab","subject_id":1,"group_id":2,"number":1,"name":"No","weight":2}`, 403)
+	request(2001, `{"kind":"lab","subject_id":1,"group_id":2,"number":1,"name":"Missing group","weight":2}`, 400)
 	request(1001, `{"kind":"lab","subject_id":1,"group_id":1,"number":2,"name":"Optional create","weight":2.75,"required":false,"grade_summaries":[{"average":5,"final_hint":5}]}`, 200)
 	state = gradingSnapshot(t, s, 3001)
 	if len(state.Labs) != 2 || state.Labs[1].Weight != 2.75 || state.Labs[1].Required {
@@ -304,24 +304,24 @@ func TestWeightedDualRoleMembership(t *testing.T) {
 			(3,1,2,1,'Other assigned'),(4,2,2,1,'Other unassigned');
 		INSERT INTO assignments VALUES(1,2,2001);
 		INSERT INTO grades(student_id,lab_id,value) VALUES(2001,2,4),(4001,3,5),(4001,4,5);`)
-	check := func(otherAssigned bool) {
+	check := func(teacher bool) {
 		t.Helper()
 		state := gradingSnapshot(t, s, 2001)
 		wantLabs, wantSummaries, wantGrades := 2, 22, 1
-		if otherAssigned {
-			wantLabs, wantSummaries, wantGrades = 3, 23, 2
+		if teacher {
+			wantLabs, wantSummaries, wantGrades = 4, 24, 3
 		}
 		if len(state.Labs) != wantLabs || len(state.Summaries) != wantSummaries || len(state.Grades) != wantGrades {
 			t.Fatalf("dual-role visibility: labs=%d summaries=%d grades=%d", len(state.Labs), len(state.Summaries), len(state.Grades))
 		}
 		for _, lab := range state.Labs {
-			if lab.ID == 4 || (!otherAssigned && lab.ID == 3) {
+			if !teacher && (lab.ID == 3 || lab.ID == 4) {
 				t.Fatalf("unrelated lab leaked: %d", lab.ID)
 			}
 		}
 		ownSummary := false
 		for _, summary := range state.Summaries {
-			if summary.GroupID == 2 && (!otherAssigned || summary.SubjectID != 1) {
+			if summary.GroupID == 2 && !teacher {
 				t.Fatalf("unrelated summary leaked: %+v", summary)
 			}
 			if summary.StudentID == 2001 && summary.SubjectID == 2 && summary.GroupID == 1 {
@@ -339,7 +339,7 @@ func TestWeightedDualRoleMembership(t *testing.T) {
 			if user.ID == 3001 {
 				classmate = true
 			}
-			if user.ID == 4001 && !otherAssigned {
+			if user.ID == 4001 && !teacher {
 				t.Fatal("revoked group member leaked")
 			}
 		}
@@ -348,8 +348,8 @@ func TestWeightedDualRoleMembership(t *testing.T) {
 		}
 	}
 	check(true)
-	gradingRequest(t, s, 1001, []byte(`{"kind":"assignment","subject_id":1,"group_id":2,"teacher_id":2001,"enabled":false}`), 200)
-	check(false)
+	notificationETAExec(t, s, ctx, "DELETE FROM assignments WHERE teacher_id=2001")
+	check(true) // No assignments are needed for any subject or group.
 	// Every viewer sees the dual-role member's student summary as well.
 	state := gradingSnapshot(t, s, 3001)
 	found := false
@@ -388,15 +388,15 @@ func TestWeightedSummaryScopeAndRevocation(t *testing.T) {
 	check(1001, 4, 22, 4)
 	check(3001, 2, 20, 2)
 	check(4001, 2, 2, 2)
-	check(2001, 1, 10, 1)
+	check(2001, 4, 22, 4)
 	check(9001, 0, 0, 0)
 	// A teacher who is also a student retains the whole own-group gradebook.
 	notificationETAExec(t, s, ctx, "UPDATE users SET group_id=1 WHERE id=2001")
-	check(2001, 2, 22, 2)
-	gradingRequest(t, s, 1001, []byte(`{"kind":"assignment","subject_id":1,"group_id":1,"teacher_id":2001,"enabled":false}`), 200)
+	check(2001, 4, 24, 4)
+	gradingRequest(t, s, 1001, []byte(`{"kind":"role","user_id":2001,"enabled":false}`), 200)
 	check(2001, 2, 22, 2)
 	gradingRequest(t, s, 2001, []byte(`{"kind":"lab","id":1,"number":1,"name":"Revoked","weight":2}`), 403)
-	notificationETAExec(t, s, ctx, "UPDATE users SET group_id=NULL WHERE id=2001; INSERT INTO assignments VALUES(1,1,2001); UPDATE users SET teacher=false WHERE id=2001")
+	notificationETAExec(t, s, ctx, "UPDATE users SET group_id=NULL WHERE id=2001; UPDATE users SET teacher=false WHERE id=2001")
 	check(2001, 0, 0, 0)
 	gradingRequest(t, s, 2001, []byte(`{"kind":"lab","id":1,"number":1,"name":"Stale role","weight":2}`), 403)
 	// A moved student's old grades must not create summaries in the old group.

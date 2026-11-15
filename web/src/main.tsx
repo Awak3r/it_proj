@@ -258,11 +258,7 @@ function App() {
     !me.name ||
     (role === "student" && !me.group_id);
   function eventForm() {
-    const available = me.root
-      ? subjects
-      : subjects.filter((s) =>
-          data!.assignments.some((a) => a.subject_id === s.id),
-        );
+    const available = subjects;
     openForm(
       "Новое событие",
       [
@@ -276,12 +272,7 @@ function App() {
           name: "groups",
           label: "Группы (можно выбрать несколько)",
           type: "multi",
-          options: groups
-            .filter(
-              (g) =>
-                me.root || data!.assignments.some((a) => a.group_id === g.id),
-            )
-            .map((g) => ({ value: g.id, label: g.name })),
+          options: groups.map((g) => ({ value: g.id, label: g.name })),
           required: true,
         },
         {
@@ -470,20 +461,11 @@ function App() {
       setExporting(false);
     }
   }
-  const accessibleGroups = groups.filter(
-    (g) =>
-      me.root ||
-      g.id === me.group_id ||
-      data.assignments.some((a) => a.group_id === g.id),
-  );
+  const accessibleGroups = groups.filter((g) => teacher || g.id === me.group_id);
   const currentGroup = group || me.group_id || accessibleGroups[0]?.id || 0;
   const currentSubject = subject || subjects[0]?.id || 0;
-  const canGrade =
-    !!me.root ||
-    (me.teacher &&
-      data.assignments.some(
-        (a) => a.subject_id === currentSubject && a.group_id === currentGroup,
-      ));
+  const canGrade = teacher;
+  const rootMode = role === "root" && !!me.root;
   const mine = data.entries.filter((e) => e.user_id === me.id && active(e));
   const selected = data.events.find((e) => e.id === eventID);
   const board = (ev: Event) =>
@@ -845,18 +827,11 @@ function App() {
                         value={currentGroup}
                         onChange={(e) => setGroup(Number(e.target.value))}
                       >
-                        {groups
-                          .filter(
-                            (g) =>
-                              me.root ||
-                              g.id === me.group_id ||
-                              data.assignments.some((a) => a.group_id === g.id),
-                          )
-                          .map((g) => (
-                            <option key={g.id} value={g.id}>
-                              {g.name}
-                            </option>
-                          ))}
+                        {accessibleGroups.map((g) => (
+                          <option key={g.id} value={g.id}>
+                            {g.name}
+                          </option>
+                        ))}
                       </select>
                     </label>
                     <label>
@@ -1156,164 +1131,102 @@ function App() {
                         )}
                       </section>
                     ))}
-                    <section className="panel">
-                      <div className="section-heading">
-                        <h2>Пользователи</h2>
-                        <button
-                          className="icon-button"
-                          aria-label="Выдать роль"
-                          onClick={() =>
-                            openForm(
-                              "Роль преподавателя",
-                              [
-                                {
-                                  name: "user",
-                                  label: "Telegram ID",
-                                  type: "number",
-                                  required: true,
-                                },
-                                {
-                                  name: "enabled",
-                                  label: "Доступ",
-                                  options: [
-                                    { value: "true", label: "Выдать" },
-                                    { value: "false", label: "Отозвать" },
-                                  ],
-                                },
-                              ],
-                              (v) => ({
-                                kind: "role",
-                                user_id: Number(v.user),
-                                enabled: v.enabled === "true",
-                              }),
-                            )
-                          }
-                        >
-                          <Plus size={18} />
-                        </button>
-                      </div>
-                      {data.users.map((u) => (
-                        <div className="admin-row" key={u.id}>
-                          <span>
-                            {u.name || "Ожидает регистрации"}
-                            <small>
-                              {u.id} ·{" "}
-                              {u.teacher
-                                ? "Преподаватель"
-                                : groupName(u.group_id)}
-                            </small>
-                          </span>
+                    {rootMode && (
+                      <section className="panel">
+                        <div className="section-heading">
+                          <h2>Преподаватели</h2>
                           <button
-                            className="link"
+                            className="icon-button"
+                            aria-label="Добавить преподавателя"
                             onClick={() =>
                               openForm(
-                                "Перевод в другую группу",
+                                "Добавить преподавателя",
                                 [
                                   {
-                                    name: "group",
-                                    label: "Новая группа",
-                                    options: groups.map((g) => ({
-                                      value: g.id,
-                                      label: g.name,
-                                    })),
+                                    name: "user",
+                                    label: "Telegram ID",
+                                    type: "number",
+                                    required: true,
                                   },
                                 ],
                                 (v) => ({
-                                  kind: "transfer",
-                                  user_id: u.id,
-                                  group_id: Number(v.group),
+                                  kind: "role",
+                                  user_id: Number(v.user),
+                                  enabled: true,
                                 }),
-                                "Старые оценки сохраняются в прежней ведомости. Активные записи нужно закрыть заранее.",
                               )
                             }
                           >
-                            Группа
+                            <Plus size={18} />
                           </button>
                         </div>
-                      ))}
-                    </section>
-                    <section className="panel">
-                      <div className="section-heading">
-                        <h2>Назначения</h2>
-                        <button
-                          className="icon-button"
-                          aria-label="Добавить назначение"
-                          onClick={() =>
-                            openForm(
-                              "Назначить преподавателя",
-                              [
-                                {
-                                  name: "teacher",
-                                  label: "Преподаватель",
-                                  options: data.users
-                                    .filter((u) => u.teacher)
-                                    .map((u) => ({
-                                      value: u.id,
-                                      label: u.name || String(u.id),
-                                    })),
-                                },
-                                {
-                                  name: "subject",
-                                  label: "Предмет",
-                                  options: subjects.map((s) => ({
-                                    value: s.id,
-                                    label: s.name,
-                                  })),
-                                },
-                                {
-                                  name: "group",
-                                  label: "Группа",
-                                  options: groups.map((g) => ({
-                                    value: g.id,
-                                    label: g.name,
-                                  })),
-                                },
-                              ],
-                              (v) => ({
-                                kind: "assignment",
-                                teacher_id: Number(v.teacher),
-                                subject_id: Number(v.subject),
-                                group_id: Number(v.group),
-                                enabled: true,
-                              }),
-                            )
-                          }
-                        >
-                          <Plus size={18} />
-                        </button>
-                      </div>
-                      {data.assignments.map((a) => (
-                        <div
-                          className="admin-row"
-                          key={`${a.teacher_id}-${a.subject_id}-${a.group_id}`}
-                        >
-                          <span>
-                            {data.users.find((u) => u.id === a.teacher_id)
-                              ?.name || a.teacher_id}
-                            <small>
-                              {subjectName(a.subject_id)} ·{" "}
-                              {groupName(a.group_id)}
-                            </small>
-                          </span>
-                          <button
-                            className="icon-button danger"
-                            aria-label="Отозвать назначение"
-                            onClick={() => {
-                              if (confirm("Отозвать назначение?"))
-                                action({
-                                  kind: "assignment",
-                                  ...a,
-                                  enabled: false,
-                                });
-                            }}
-                          >
-                            <X size={16} />
-                          </button>
+                        {data.users.filter((u) => u.teacher).map((u) => (
+                          <div className="admin-row" key={u.id}>
+                            <span>
+                              {u.name || "Ожидает регистрации"}
+                              <small>{u.id}</small>
+                            </span>
+                            <button
+                              className="link danger"
+                              aria-label={`Отозвать роль преподавателя ${u.name || u.id}`}
+                              onClick={() => {
+                                if (confirm("Отозвать роль преподавателя? Доступ ко всем группам и предметам будет закрыт."))
+                                  action({ kind: "role", user_id: u.id, enabled: false });
+                              }}
+                            >
+                              Отозвать роль
+                            </button>
+                          </div>
+                        ))}
+                        <p className="footnote">Преподаватель сразу получает доступ ко всем группам и предметам.</p>
+                      </section>
+                    )}
+                    {rootMode && (
+                      <section className="panel">
+                        <div className="section-heading">
+                          <h2>Студенты</h2>
                         </div>
-                      ))}
-                    </section>
+                        {data.users.filter((u) => !u.teacher && u.group_id !== null).map((u) => (
+                          <div className="admin-row" key={u.id}>
+                            <span>
+                              {u.name || "Ожидает регистрации"}
+                              <small>
+                                {u.id} ·{" "}
+                                {groupName(u.group_id)}
+                              </small>
+                            </span>
+                            <button
+                              className="link"
+                              onClick={() =>
+                                openForm(
+                                  "Перевод в другую группу",
+                                  [
+                                    {
+                                      name: "group",
+                                      label: "Новая группа",
+                                      options: groups.map((g) => ({
+                                        value: g.id,
+                                        label: g.name,
+                                      })),
+                                    },
+                                  ],
+                                  (v) => ({
+                                    kind: "transfer",
+                                    user_id: u.id,
+                                    group_id: Number(v.group),
+                                  }),
+                                  "Старые оценки сохраняются в прежней ведомости. Активные записи нужно закрыть заранее.",
+                                )
+                              }
+                            >
+                              Группа
+                            </button>
+                          </div>
+                        ))}
+                      </section>
+                    )}
                   </div>
-                  {role === "root" && me.root && (
+                  {rootMode && (
                     <section className="panel audit">
                       <h2>Последние изменения</h2>
                       {data.audit.slice(0, 20).map((a) => (

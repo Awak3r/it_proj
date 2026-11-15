@@ -144,7 +144,7 @@ test("root has management and a single manual shuffle", async ({ page }) => {
   await api(page, 3003, { kind: "join", event_id: event.id });
   await login(page, "1001", "Управление root");
   await page.getByRole("button", { name: "Управление", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Назначения" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Преподаватели", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "События", exact: true }).click();
   await page
     .getByRole("button")

@@ -102,7 +102,6 @@ func TestIntegration(t *testing.T) {
 	must(1001, command{Kind: "subject", Name: "Программирование"})
 	must(1001, command{Kind: "role", UserID: 2001, Enabled: true})
 	must(2001, command{Kind: "profile", Name: "Преподаватель"})
-	must(1001, command{Kind: "assignment", SubjectID: 1, GroupID: 1, TeacherID: 2001, Enabled: true})
 	must(2001, command{Kind: "lab", SubjectID: 1, GroupID: 1, Number: 1, Name: "Массивы"})
 	must(2001, command{Kind: "lab", SubjectID: 1, GroupID: 1, Number: 2, Name: "Указатели"})
 	for i := int64(3001); i <= 3100; i++ {
@@ -290,10 +289,10 @@ func TestIntegration(t *testing.T) {
 		c := command{Kind: "grade", UserID: 3099, LabID: 1, Value: &v}
 		must(2001, c) // Healthy control: grant is actually usable.
 		c.Version = 1
-		must(1001, command{Kind: "assignment", SubjectID: 1, GroupID: 1, TeacherID: 2001, Enabled: false})
+		must(1001, command{Kind: "role", UserID: 2001, Enabled: false})
 		before := count("SELECT count(*) FROM audit")
 		status, _ := call(2001, c, "")
-		assert(status == 403, "revoked assignment still permits writes")
+		assert(status == 403, "revoked role still permits writes")
 		assert(count("SELECT version FROM grades WHERE student_id=3099 AND lab_id=1") == 1, "denied write changed grade")
 		assert(count("SELECT count(*) FROM audit") == before, "denied write created audit")
 		r, _ := http.NewRequest("GET", httpServer.URL+"/api/state", nil)
@@ -306,8 +305,8 @@ func TestIntegration(t *testing.T) {
 		err = json.NewDecoder(response.Body).Decode(&state)
 		response.Body.Close()
 		assert(err == nil && response.StatusCode == 200, "state read failed")
-		assert(len(state.Grades) == 0 && len(state.Labs) == 0 && len(state.Assignments) == 0, "revoked assignment exposes gradebook")
-		must(1001, command{Kind: "assignment", SubjectID: 1, GroupID: 1, TeacherID: 2001, Enabled: true})
+		assert(len(state.Grades) == 0 && len(state.Labs) == 0 && len(state.Assignments) == 0, "revoked role exposes gradebook")
+		must(1001, command{Kind: "role", UserID: 2001, Enabled: true})
 		forged := c
 		forged.UserID = 4001
 		status, _ = call(2001, forged, "")
@@ -320,11 +319,8 @@ func TestIntegration(t *testing.T) {
 		status, _ = call(2001, command{Kind: "event_action", EventID: event, Action: "start"}, "")
 		assert(status == 403, "revoked teacher controls event")
 		must(1001, command{Kind: "role", UserID: 2001, Enabled: true})
-		status, _ = call(2001, c, "")
-		assert(status == 403, "old assignment silently restored with role")
-		must(1001, command{Kind: "assignment", SubjectID: 1, GroupID: 1, TeacherID: 2001, Enabled: true})
 		must(2001, c)
-		assert(count("SELECT version FROM grades WHERE student_id=3099 AND lab_id=1") == 2, "new grant not usable")
+		assert(count("SELECT version FROM grades WHERE student_id=3099 AND lab_id=1") == 2, "restored teacher role not usable without assignments")
 	})
 	t.Run("concurrent grade conflict and durable replay", func(t *testing.T) {
 		start := make(chan struct{})

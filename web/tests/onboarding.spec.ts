@@ -95,7 +95,7 @@ test("root must leave student mode before opening management", async ({
     page.getByRole("heading", { name: "Группы", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Назначения", exact: true }),
+    page.getByRole("heading", { name: "Преподаватели", exact: true }),
   ).toBeVisible();
   expect(commands).toHaveLength(0);
 });
