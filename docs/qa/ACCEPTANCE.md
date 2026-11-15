@@ -12,11 +12,12 @@
 
 ## Итог автоматического прогона
 
-- Go: **55 конечных сценариев PASS** (64 pass-события, включая родительские тесты; 24 верхнеуровневых теста). Единственный SKIP — служебный `TestAcceptanceRestartMainHelper` в родительском процессе: он выполняется в дочерних процессах restart-теста. Пропусков проверок требований нет.
+- Go: **85 конечных сценариев PASS** (включая взвешенное оценивание, миграции, точность весов; 24 верхнеуровневых теста). Единственный SKIP — служебный `TestAcceptanceRestartMainHelper` в родительском процессе: он выполняется в дочерних процессах restart-теста. Пропусков проверок требований нет.
 - `go vet`, Go build, TypeScript build и Vite build: exit 0.
-- Playwright: **42/42 PASS** (19 существующих + 8 новых UI-приёмочных + 15 новых FR-16/позиция).
+- Playwright: **60/60 PASS** (19 существующих + 8 наboarding/acceptance + 15 FR-16/позиция + 18 новых взвешенного оценивания, включая 1 реальный API/UI интеграционный тест).
 - Python release tooling: **19/19 PASS**; shell syntax check: exit 0.
 - Restart-тест дополнительно прошёл три повтора с `-shuffle=on`.
+- Полный Actions workflow на SHA `aff2173dd968325afb075ffe60ff3e9337020436`: checks/build/deploy **success**; production-образ `labturn-app:gh-aff2173dd968325afb075ffe60ff3e9337020436-43705072514-1` healthy.
 
 ## Как читать матрицу
 
@@ -89,6 +90,28 @@
 - Оценка отображается с `≈`, то есть не как обещанное время приёма.
 - **Уточнение к предложенной формуле ТЗ:** UI вычитает уже прошедшую часть текущего приёма, ограничивая вычитание одной средней длительностью. Это поведение проверено, но его следует явно подтвердить владельцу либо отдельно согласовать изменение. Код формулы в рамках аудита не менялся.
 
+## FR-17: веса и обязательность работ (взвешенный средний, итоговая подсказка)
+
+Реализация: `backend/grading.go`, `backend/weights.go`, `backend/migrations.go`, `backend/migrations/0001_weighted_grading.sql`; клиент — `web/src/main.tsx`, `web/src/GradeSummaryCells.tsx`, `web/src/types.ts`.
+
+| Правило | Проверка | Итог |
+| --- | --- | --- |
+| Каждая работа имеет положительный вес (не больше 1 000 000) | `TestWeightedLabMetadata`; `TestWeightedGradingArithmetic`; UI `lab form defaults, decimal-string payload, positive validation` | **Авто PASS**: вес `1` по умолчанию; `0`, отрицательный, `>1e6`, нечисло отклоняются HTTP 400; точность десятичной строки сохраняется (`weight_text`) |
+| Обязательная работа без оценки считается за 2 и блокирует итог | `TestWeightedGradingArithmetic`; UI `uses server required counts instead of inferring completion` | **Авто PASS**: пустая обязательная → 2 в среднем, `final_hint=null` |
+| Обязательная с оценкой 2 блокирует итог | `TestWeightedGradingArithmetic` | **Авто PASS** |
+| Обязательная с оценкой 3–5 считается сданной | `TestWeightedGradingArithmetic` | **Авто PASS** |
+| Необязательная без оценки исключается из среднего и знаменателя | `TestWeightedGradingArithmetic`; UI `allows an ungraded optional lab when required work is passed` | **Авто PASS**: вес необязательной без оценки не учитывается |
+| Необязательная с оценкой 2–5 участвует в среднем, не блокирует итог | `TestWeightedGradingArithmetic` | **Авто PASS** |
+| Архивные работы исключены | `TestWeightedGradingArithmetic` | **Авто PASS** |
+| Средний — взвешенный, `average` с 2 знаками, `final_hint` из точного среднего (половина вверх) | `TestWeightedGradingArithmetic`; UI `does not double-round the server final hint` | **Авто PASS**: `0.500000000000000000001` + `0.499999999999999999999` с оценками 4/5 → средний 4.50, итог 4 |
+| Итоговая подсказка только после сдачи всех обязательных работ | `TestWeightedGradingArithmetic`; UI `uses server required counts` | **Авто PASS**: `required_total=required_passed` и знаменатель > 0 |
+| Подсказка — не выставленная оценка, не записывается в grades | Код: итог не сохраняется в БД; UI подпись «Подсказка, не выставленная оценка» | **Авто PASS** |
+| Права доступа как у ведомости (root/учитель/студент) | `TestWeightedSummaryScopeAndRevocation`; `TestWeightedDualRoleMembership`; UI `student sees summaries and metadata read-only` | **Авто PASS**: студент видит свою группу, учитель — назначенные пары, root — всё |
+| Редактирование веса/обязательности обновляет снимок | `TestWeightedLabMetadata`; UI `editing weight and required updates metadata and fresh authoritative summary` | **Авто PASS** |
+| Старые работы без метаданных: вес=1, обязательная=true | `TestMigrationsUpgradeAndCompatibility`; UI `lab form defaults` | **Авто PASS**: аддитивная миграция, обратная совместимость |
+
+**Не обещается:** конструктор произвольных формул, типы работ (ЛР/КР/коллоквиум), Excel-экспорт, диаграммы — следующие этапы.
+
 ## Ручная приёмка — не закрыта автоматически
 
 | Проверка | Статус | Безопасный порядок |
@@ -103,7 +126,7 @@
 ## Что требует согласования / следующего прогона
 
 1. Подтвердить уточнение FR-16 с вычитанием уже прошедшего времени текущего приёма. Остальные правила с пометкой «допущение» применяются в границах решений README v0.3, а не становятся новыми согласованными требованиями только из-за теста.
-2. Согласовать commit/push новых тестов. После этого проверить **весь** workflow на новом фактическом SHA с PostgreSQL 17 / Go 1.24.x; не делать push или выпуск автоматически ради отчёта.
+2. commit/push новых тестов выполнен (SHA `aff2173dd968325afb075ffe60ff3e9337020436`); весь workflow пройден на PostgreSQL 17 / Go 1.24.x в Actions; production-развёртывание healthy.
 3. Закрыть реальные Telegram/WebView-проверки. До этого итоговая ручная приёмка MVP **не завершена**. Буквальный restart AC-10 уже закрыт локальным автоматическим тестом.
 4. Цель 100 пользователей / 10 событий / обновление до 5 секунд — отдельное согласование и измерение задержек. Текущий I/100 users and 10 events проверяет корректность, не SLA интерфейса.
 
