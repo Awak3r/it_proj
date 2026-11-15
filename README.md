@@ -8,6 +8,7 @@
 
 - [Разработка, проверки и исторические инструкции](docs/DEVELOPMENT.md)
 - [HTTP API](docs/API.md)
+- [Матрица приёмки AC-01–AC-28 и FR-15/FR-16](docs/qa/ACCEPTANCE.md) — тесты, актуальные локальные результаты и оставшиеся ручные проверки.
 - `docker compose up --build -d` — только локальная разработка с отдельной БД, пустым `BOT_TOKEN` и локальным `DEV_AUTH=true`; порядок настройки — в [инструкции для ПК](docs/DEPLOYMENT-PC.md).
 
 Production-секреты остаются только на VPS в `/home/ubuntu/labturn/source/.env` с правами `600`; не переносите их на ПК или в GitHub. Production-вход проверяет Telegram initData. Локальная dev-конфигурация создаётся отдельно и не предназначена для публичного доступа. На VPS не запускать сборки, seed, UI-тесты, IDE и language servers; не удалять каталог исходников с серверными Compose/Caddyfile/`.env` и не применять `down -v`.
