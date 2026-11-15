@@ -8,7 +8,7 @@ Production запускается через [.github/workflows/deploy.yml](../.
 
 ### Устройство CI
 
-Контракт реализован в workflow-файлах и проверен полными attempts 1 и 2 run `43738595146`. Сравнение длительности и границы подтверждения — в [STATUS.md](STATUS.md):
+Текущий pipeline проверен полным run `43765180836`, включая параллельную подготовку Go/frontend и доставку startup healthcheck из образа. Более ранние сравнения кэша и длительности сохранены с исходными run IDs в [STATUS.md](STATUS.md):
 
 1. Push только в `codex/labturn-mvp`; также предусмотрен `workflow_dispatch` (ограничение UI ниже).
 2. Reusable `checks.yml` сначала запускает лёгкий job `changes`: определение полного диапазона изменений, проверка локальных ссылок, unit-тесты CI/release tooling. Затем **`test` и `image` идут параллельно**; `test` проверяет Go/PostgreSQL и UI. Внутри `test` helper `scripts/prepare-ci.py` параллельно выполняет ветку Go (`-race`, vet, сборка сервера) и ветку frontend (`npm ci`, build, установка только headless Chromium). Для каждой стадии печатается время и exit status; ошибка любой ветки останавливает обе, запуск app/seed/UI возможен только после общего успеха.
