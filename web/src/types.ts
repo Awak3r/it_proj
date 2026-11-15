@@ -13,6 +13,18 @@ export type Lab = {
   number: number;
   name: string;
   archived: boolean;
+  weight: number;
+  weight_text?: string;
+  required: boolean;
+};
+export type GradeSummary = {
+  student_id: number;
+  subject_id: number;
+  group_id: number;
+  average: number | null;
+  final_hint: number | null;
+  required_total: number;
+  required_passed: number;
 };
 export type Grade = {
   student_id: number;
@@ -64,6 +76,7 @@ export type State = {
   users: User[];
   labs: Lab[];
   grades: Grade[];
+  grade_summaries: GradeSummary[];
   events: Event[];
   entries: Entry[];
   assignments: Assignment[];

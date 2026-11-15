@@ -25,7 +25,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-//go:embed schema.sql
+//go:embed schema.sql migrations/*.sql
 var files embed.FS
 var sortStrings = sort.Strings
 
@@ -63,7 +63,7 @@ func writeError(w http.ResponseWriter, e error) {
 		case "23505":
 			writeJSON(w, 409, map[string]string{"error": "Такая запись уже существует"})
 			return
-		case "23503", "23514", "22P02":
+		case "23503", "23514", "22P02", "22003":
 			writeJSON(w, 400, map[string]string{"error": "Проверьте выбранные значения"})
 			return
 		}
@@ -85,8 +85,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer db.Close()
-	schema, _ := files.ReadFile("schema.sql")
-	if _, err = db.Exec(ctx, string(schema)); err != nil {
+	if err = migrate(ctx, db); err != nil {
 		log.Fatal(err)
 	}
 	s := &server{db: db, roots: map[int64]bool{}, token: os.Getenv("BOT_TOKEN"), dev: os.Getenv("DEV_AUTH") == "true", appURL: os.Getenv("APP_URL"), updates: newUpdateHub()}
@@ -188,13 +187,14 @@ func (s *server) state(w http.ResponseWriter, r *http.Request, uid int64) {
 	result := map[string]any{"me": me}
 	queries := map[string]string{
 		"groups": "SELECT * FROM groups ORDER BY name", "subjects": "SELECT * FROM subjects ORDER BY name",
-		"assignments": "SELECT * FROM assignments WHERE $2 OR teacher_id=$1",
-		"users":       `SELECT u.* FROM users u WHERE $2 OR u.id=$1 OR u.group_id=(SELECT group_id FROM users WHERE id=$1) OR EXISTS(SELECT 1 FROM assignments a WHERE a.teacher_id=$1 AND a.group_id=u.group_id) ORDER BY u.name`,
-		"labs":        `SELECT l.* FROM labs l WHERE $2 OR l.group_id=(SELECT group_id FROM users WHERE id=$1) OR EXISTS(SELECT 1 FROM assignments a WHERE a.teacher_id=$1 AND a.group_id=l.group_id AND a.subject_id=l.subject_id) ORDER BY number,id`,
-		"grades":      `SELECT g.* FROM grades g JOIN labs l ON l.id=g.lab_id WHERE $2 OR l.group_id=(SELECT group_id FROM users WHERE id=$1) OR EXISTS(SELECT 1 FROM assignments a WHERE a.teacher_id=$1 AND a.group_id=l.group_id AND a.subject_id=l.subject_id)`,
-		"events":      `SELECT e.*, ARRAY(SELECT group_id FROM event_groups WHERE event_id=e.id) AS group_ids, (SELECT name FROM users WHERE id=e.teacher_id) AS teacher_name, (SELECT AVG(EXTRACT(EPOCH FROM (ended_at-called_at)))/60 FROM entries WHERE event_id=e.id AND state='completed' AND called_at IS NOT NULL) AS average_minutes FROM events e WHERE $2 OR (e.teacher_id=$1 AND (SELECT teacher FROM users WHERE id=$1)) OR EXISTS(SELECT 1 FROM event_groups eg WHERE eg.event_id=e.id AND eg.group_id=(SELECT group_id FROM users WHERE id=$1)) ORDER BY e.starts_at DESC`,
-		"entries":     `SELECT q.*,u.name AS user_name,u.group_id FROM entries q JOIN users u ON u.id=q.user_id JOIN events e ON e.id=q.event_id WHERE $2 OR (e.teacher_id=$1 AND (SELECT teacher FROM users WHERE id=$1)) OR EXISTS(SELECT 1 FROM event_groups eg WHERE eg.event_id=e.id AND eg.group_id=(SELECT group_id FROM users WHERE id=$1)) ORDER BY q.position,q.id`,
-		"audit":       `SELECT * FROM audit WHERE $2 ORDER BY id DESC LIMIT 100`,
+		"assignments":     "SELECT * FROM assignments WHERE $2 OR teacher_id=$1",
+		"users":           `SELECT u.* FROM users u WHERE $2 OR u.id=$1 OR u.group_id=(SELECT group_id FROM users WHERE id=$1) OR EXISTS(SELECT 1 FROM assignments a JOIN users viewer ON viewer.id=a.teacher_id AND viewer.teacher WHERE a.teacher_id=$1 AND a.group_id=u.group_id) ORDER BY u.name`,
+		"labs":            `SELECT l.*,l.weight::text AS weight_text FROM labs l WHERE ` + visibleLab + ` ORDER BY number,id`,
+		"grades":          `SELECT g.* FROM grades g JOIN labs l ON l.id=g.lab_id WHERE ` + visibleLab,
+		"grade_summaries": gradeSummariesSQL,
+		"events":          `SELECT e.*, ARRAY(SELECT group_id FROM event_groups WHERE event_id=e.id) AS group_ids, (SELECT name FROM users WHERE id=e.teacher_id) AS teacher_name, (SELECT AVG(EXTRACT(EPOCH FROM (ended_at-called_at)))/60 FROM entries WHERE event_id=e.id AND state='completed' AND called_at IS NOT NULL) AS average_minutes FROM events e WHERE $2 OR (e.teacher_id=$1 AND (SELECT teacher FROM users WHERE id=$1)) OR EXISTS(SELECT 1 FROM event_groups eg WHERE eg.event_id=e.id AND eg.group_id=(SELECT group_id FROM users WHERE id=$1)) ORDER BY e.starts_at DESC`,
+		"entries":         `SELECT q.*,u.name AS user_name,u.group_id FROM entries q JOIN users u ON u.id=q.user_id JOIN events e ON e.id=q.event_id WHERE $2 OR (e.teacher_id=$1 AND (SELECT teacher FROM users WHERE id=$1)) OR EXISTS(SELECT 1 FROM event_groups eg WHERE eg.event_id=e.id AND eg.group_id=(SELECT group_id FROM users WHERE id=$1)) ORDER BY q.position,q.id`,
+		"audit":           `SELECT * FROM audit WHERE $2 ORDER BY id DESC LIMIT 100`,
 	}
 	for key, sql := range queries {
 		var args []any
@@ -220,27 +220,29 @@ func (s *server) state(w http.ResponseWriter, r *http.Request, uid int64) {
 }
 
 type command struct {
-	Kind        string    `json:"kind"`
-	ID          int64     `json:"id"`
-	Name        string    `json:"name"`
-	GroupID     int64     `json:"group_id"`
-	SubjectID   int64     `json:"subject_id"`
-	TeacherID   int64     `json:"teacher_id"`
-	UserID      int64     `json:"user_id"`
-	EventID     int64     `json:"event_id"`
-	LabID       int64     `json:"lab_id"`
-	GroupIDs    []int64   `json:"group_ids"`
-	Number      int       `json:"number"`
-	Value       *int      `json:"value"`
-	Version     int       `json:"version"`
-	Enabled     bool      `json:"enabled"`
-	StartsAt    time.Time `json:"starts_at"`
-	Room        string    `json:"room"`
-	Description string    `json:"description"`
-	Duration    int       `json:"duration"`
-	Strategy    string    `json:"strategy"`
-	Action      string    `json:"action"`
-	Position    int       `json:"position"`
+	Kind        string       `json:"kind"`
+	ID          int64        `json:"id"`
+	Name        string       `json:"name"`
+	GroupID     int64        `json:"group_id"`
+	SubjectID   int64        `json:"subject_id"`
+	TeacherID   int64        `json:"teacher_id"`
+	UserID      int64        `json:"user_id"`
+	EventID     int64        `json:"event_id"`
+	LabID       int64        `json:"lab_id"`
+	GroupIDs    []int64      `json:"group_ids"`
+	Number      int          `json:"number"`
+	Value       *int         `json:"value"`
+	Weight      *json.Number `json:"weight"`
+	Required    *bool        `json:"required"`
+	Version     int          `json:"version"`
+	Enabled     bool         `json:"enabled"`
+	StartsAt    time.Time    `json:"starts_at"`
+	Room        string       `json:"room"`
+	Description string       `json:"description"`
+	Duration    int          `json:"duration"`
+	Strategy    string       `json:"strategy"`
+	Action      string       `json:"action"`
+	Position    int          `json:"position"`
 }
 
 func (s *server) command(w http.ResponseWriter, r *http.Request, uid int64) {
@@ -406,10 +408,18 @@ func (s *server) execute(ctx context.Context, tx pgx.Tx, uid int64, c command) e
 		if !validName(c.Name) || c.Number <= 0 {
 			return fail("Укажите номер и название работы")
 		}
-		if c.ID == 0 {
-			return exec("INSERT INTO labs(subject_id,group_id,number,name) VALUES($1,$2,$3,$4)", c.SubjectID, c.GroupID, c.Number, strings.TrimSpace(c.Name))
+		var weight *string
+		if c.Weight != nil {
+			v := c.Weight.String()
+			if !validWeight(v) {
+				return fail("Вес работы должен быть больше 0, не больше 1000000 и представим в PostgreSQL numeric")
+			}
+			weight = &v
 		}
-		return exec("UPDATE labs SET number=$2,name=$3,archived=$4 WHERE id=$1", c.ID, c.Number, strings.TrimSpace(c.Name), c.Enabled)
+		if c.ID == 0 {
+			return exec("INSERT INTO labs(subject_id,group_id,number,name,weight,required) VALUES($1,$2,$3,$4,COALESCE($5::numeric,1),COALESCE($6::boolean,true))", c.SubjectID, c.GroupID, c.Number, strings.TrimSpace(c.Name), weight, c.Required)
+		}
+		return exec("UPDATE labs SET number=$2,name=$3,archived=$4,weight=COALESCE($5::numeric,weight),required=COALESCE($6::boolean,required) WHERE id=$1", c.ID, c.Number, strings.TrimSpace(c.Name), c.Enabled, weight, c.Required)
 	case "grade":
 		var subject, group int64
 		var archived bool

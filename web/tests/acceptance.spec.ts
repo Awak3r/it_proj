@@ -27,6 +27,8 @@ function snapshot(): State {
       group_id: 1,
       number: id,
       name: `Acceptance lab ${id}`,
+      weight: 1,
+      required: true,
       archived: false,
     })),
     grades: [4, 5, 2, null].map((value, i) => ({
@@ -35,6 +37,7 @@ function snapshot(): State {
       value,
       version: 1,
     })),
+    grade_summaries: [],
     events: [
       {
         id: 1,
@@ -92,6 +95,8 @@ type Command =
       number: number;
       name: string;
       enabled: boolean;
+      weight?: number | string;
+      required?: boolean;
     };
 
 async function openApp(page: Page, state: State, rejectGrade = false) {
@@ -147,6 +152,11 @@ async function openApp(page: Page, state: State, rejectGrade = false) {
             number: command.number,
             name: command.name,
             archived: command.enabled,
+            weight: Number(command.weight ?? lab.weight ?? 1),
+            weight_text: String(
+              command.weight ?? lab.weight_text ?? lab.weight ?? 1,
+            ),
+            required: command.required ?? lab.required ?? true,
           });
         else
           state.labs.push({
@@ -156,6 +166,9 @@ async function openApp(page: Page, state: State, rejectGrade = false) {
             number: command.number,
             name: command.name,
             archived: command.enabled,
+            weight: Number(command.weight ?? 1),
+            weight_text: String(command.weight ?? 1),
+            required: command.required ?? true,
           });
         break;
       }
@@ -356,7 +369,7 @@ test("AC14/15/26/28 rendering: adding and archiving labs immediately updates pas
 
   // Archiving a passed lab removes both a numerator and denominator unit.
   await page
-    .getByRole("button", { name: "ЛР 1 Acceptance lab 1", exact: true })
+    .getByRole("button", { name: /^ЛР 1 Acceptance lab 1(?:\s|$)/ })
     .click();
   const edit = page.getByRole("dialog", {
     name: "Редактировать работу",
@@ -372,7 +385,7 @@ test("AC14/15/26/28 rendering: adding and archiving labs immediately updates pas
 
   // Archiving an ungraded lab removes only a denominator unit.
   await page
-    .getByRole("button", { name: "ЛР 5 Live added lab", exact: true })
+    .getByRole("button", { name: /^ЛР 5 Live added lab(?:\s|$)/ })
     .click();
   await edit
     .getByRole("combobox", { name: "Статус", exact: true })
@@ -390,6 +403,8 @@ test("AC14/15/26/28 rendering: adding and archiving labs immediately updates pas
       number: 5,
       name: "Live added lab",
       enabled: false,
+      weight: "1",
+      required: true,
     },
     {
       kind: "lab",
@@ -399,6 +414,8 @@ test("AC14/15/26/28 rendering: adding and archiving labs immediately updates pas
       number: 1,
       name: "Acceptance lab 1",
       enabled: true,
+      weight: "1",
+      required: true,
     },
     {
       kind: "lab",
@@ -408,6 +425,8 @@ test("AC14/15/26/28 rendering: adding and archiving labs immediately updates pas
       number: 5,
       name: "Live added lab",
       enabled: true,
+      weight: "1",
+      required: true,
     },
   ]);
 });

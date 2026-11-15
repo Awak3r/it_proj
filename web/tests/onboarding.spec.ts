@@ -16,6 +16,7 @@ function snapshot(root = false): State {
     users: [],
     labs: [],
     grades: [],
+    grade_summaries: [],
     events: [],
     entries: [],
     audit: [],

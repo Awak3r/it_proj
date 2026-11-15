@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +14,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type testTransport func(*http.Request) (*http.Response, error)
@@ -47,8 +48,7 @@ func TestIntegration(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer db.Close()
-	sql, _ := files.ReadFile("schema.sql")
-	if _, e = db.Exec(ctx, string(sql)); e != nil {
+	if e = migrate(ctx, db); e != nil {
 		t.Fatal(e)
 	}
 	s := &server{db: db, dev: true, roots: map[int64]bool{1001: true}}

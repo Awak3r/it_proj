@@ -28,6 +28,7 @@ import { State, Event, Entry, Lab, strategies, statuses } from "./types";
 import "./style.css";
 import { useTelegramTheme } from "./theme";
 import { startLiveUpdates } from "./live";
+import { GradeSummaryCells } from "./GradeSummaryCells";
 type Cmd = Record<string, unknown>;
 type Field = {
   name: string;
@@ -36,6 +37,9 @@ type Field = {
   value?: string | number;
   options?: { value: string | number; label: string }[];
   required?: boolean;
+  min?: number;
+  max?: number;
+  step?: number | "any";
 };
 type Modal = {
   title: string;
@@ -315,6 +319,25 @@ function App() {
           required: true,
         },
         { name: "name", label: "Название", value: l?.name, required: true },
+        {
+          name: "weight",
+          label: "Вес работы",
+          type: "number",
+          value: l?.weight_text ?? l?.weight ?? 1,
+          min: 0,
+          max: 1000000,
+          step: "any",
+          required: true,
+        },
+        {
+          name: "required",
+          label: "Обязательность",
+          value: String(l?.required ?? true),
+          options: [
+            { value: "true", label: "Обязательная" },
+            { value: "false", label: "Необязательная" },
+          ],
+        },
         ...(l
           ? [
               {
@@ -329,15 +352,36 @@ function App() {
             ]
           : []),
       ],
-      (v) => ({
-        kind: "lab",
-        id: l?.id || 0,
-        subject_id: currentSubject,
-        group_id: currentGroup,
-        number: Number(v.number),
-        name: v.name,
-        enabled: v.archive === "true",
-      }),
+      (v) => {
+        // Keep decimal text intact: rounding the weight can change the final hint.
+        const weight = v.weight
+          .trim()
+          .replace(/^\+/, "")
+          .replace(/^\./, "0.")
+          .replace(/\.(?=[eE]|$)/, "")
+          .replace(/^0+(?=\d)/, "");
+        if (
+          !/^(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(weight) ||
+          !/[1-9]/.test(weight.split(/[eE]/)[0]) ||
+          !Number.isFinite(Number(weight)) ||
+          Number(weight) > 1000000
+        )
+          throw new Error(
+            "Вес работы должен быть больше 0 и не больше 1000000",
+          );
+        return {
+          kind: "lab",
+          id: l?.id || 0,
+          subject_id: currentSubject,
+          group_id: currentGroup,
+          number: Number(v.number),
+          name: v.name,
+          enabled: v.archive === "true",
+          weight,
+          required: v.required === "true",
+        };
+      },
+      "Вес задаёт относительный вклад работы в средний балл. Необязательная работа без оценки не учитывается.",
     );
   }
   async function saveGrade(
@@ -809,10 +853,18 @@ function App() {
                                 >
                                   ЛР {l.number}
                                   <small>{l.name}</small>
+                                  <small className="lab-policy">
+                                    Вес: {l.weight_text ?? l.weight ?? 1} ·{" "}
+                                    {l.required === false
+                                      ? "необязательная"
+                                      : "обязательная"}
+                                  </small>
                                 </button>
                               </th>
                             ))}
                           <th>Прогресс</th>
+                          <th>Средний балл</th>
+                          <th>Итог (подсказка)</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -890,11 +942,25 @@ function App() {
                                   );
                                 })}
                                 <td>
-                                  <div className="progress-label">
+                                  <div
+                                    className="progress-label"
+                                    title="Все активные работы, включая необязательные. Необязательные работы не блокируют итог."
+                                  >
                                     {done} / {labs.length}
                                     <small>осталось {labs.length - done}</small>
                                   </div>
                                 </td>
+                                <GradeSummaryCells
+                                  summary={data.grade_summaries?.find(
+                                    (s) =>
+                                      s.student_id === u.id &&
+                                      s.subject_id === currentSubject &&
+                                      s.group_id === currentGroup,
+                                  )}
+                                  pending={labs.some(
+                                    (l) => !!pending[u.id + "-" + l.id],
+                                  )}
+                                />
                               </tr>
                             );
                           })}
@@ -947,6 +1013,15 @@ function App() {
                   <p className="footnote">
                     2 — не сдано · 3, 4, 5 — сдано · Пустая ячейка — оценки ещё
                     нет
+                  </p>
+                  <p className="footnote">
+                    Средний балл учитывает веса работ: обязательная без оценки
+                    считается за 2, необязательная без оценки не учитывается.
+                    Итог — подсказка с округлением до целого только после сдачи
+                    всех обязательных работ. Оценка автоматически не
+                    выставляется. Расчёты выполняются по сохранённым данным;
+                    округлённый средний не используется для повторного
+                    округления итога.
                   </p>
                 </>
               ) : tab === "admin" && me.root ? (
@@ -1365,6 +1440,7 @@ function FormModal({ modal, close }: { modal: Modal; close: () => void }) {
               {f.label}
               {f.options ? (
                 <select
+                  aria-label={f.label}
                   multiple={f.type === "multi"}
                   value={f.type === "multi" ? v[f.name].split(",") : v[f.name]}
                   onChange={(e) =>
@@ -1389,6 +1465,9 @@ function FormModal({ modal, close }: { modal: Modal; close: () => void }) {
               ) : (
                 <input
                   type={f.type || "text"}
+                  min={f.min}
+                  max={f.max}
+                  step={f.step}
                   value={v[f.name]}
                   onChange={(e) => setV({ ...v, [f.name]: e.target.value })}
                   required={f.required}

@@ -65,11 +65,7 @@ func notificationETAServer(t *testing.T) (*server, context.Context) {
 		t.Fatal(err)
 	}
 	t.Cleanup(db.Close)
-	sql, err := files.ReadFile("schema.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = db.Exec(ctx, string(sql)); err != nil {
+	if err = migrate(ctx, db); err != nil {
 		t.Fatal(err)
 	}
 	s := &server{db: db, roots: map[int64]bool{1001: true}}
