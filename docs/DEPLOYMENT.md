@@ -11,7 +11,7 @@ Production запускается через [.github/workflows/deploy.yml](../.
 Контракт реализован в workflow-файлах и проверен полными attempts 1 и 2 run `43738595146`. Сравнение длительности и границы подтверждения — в [STATUS.md](STATUS.md):
 
 1. Push только в `codex/labturn-mvp`; также предусмотрен `workflow_dispatch` (ограничение UI ниже).
-2. Reusable `checks.yml` сначала запускает лёгкий job `changes`: определение полного диапазона изменений, проверка локальных ссылок, unit-тесты CI/release tooling. Затем **`test` и `image` идут параллельно**; `test` проверяет Go/PostgreSQL и UI.
+2. Reusable `checks.yml` сначала запускает лёгкий job `changes`: определение полного диапазона изменений, проверка локальных ссылок, unit-тесты CI/release tooling. Затем **`test` и `image` идут параллельно**; `test` проверяет Go/PostgreSQL и UI. Внутри `test` helper `scripts/prepare-ci.py` параллельно выполняет ветку Go (`-race`, vet, сборка сервера) и ветку frontend (`npm ci`, build, установка только headless Chromium). Для каждой стадии печатается время и exit status; ошибка любой ветки останавливает обе, запуск app/seed/UI возможен только после общего успеха.
 3. `image` выполняет **одну сборку `linux/amd64`** через `docker/build-push-action` с GHA cache. Повторная сборка образа в deployment не нужна.
 4. Artifact `image.tar.gz` экспортируется только при release-вызове через **`workflow_call`**, не при самостоятельном проверочном запуске.
 5. Deployment ждёт **все проверки**, использует environment `production`, artifact того же прогона, pinned SSH host, preflight, backup и rollback receiver.
@@ -20,6 +20,10 @@ Production запускается через [.github/workflows/deploy.yml](../.
 8. Внутри production lock перед передачей образа проверяется актуальность SHA через GitHub API. Если в ветке уже есть новые изменения приложения или история расходится, старый релиз пропускается. Более новые docs-only коммиты не мешают выпуску проверенного приложения. При недоступном API, пустом/неполном diff проверка не разрешает устаревший релиз. Это защищает от переупорядочивания jobs на runners; при отмене нужного прогона повторяют полный workflow актуального SHA.
 
 Кэш Buildx (`type=gha`, scope `labturn-amd64`) изолируется GitHub по refs; в образе и артефакте нет production-секретов. Для уже gzip-сжатого artifact дополнительное ZIP-сжатие отключено. В первом сравнении полные релизы заняли 178 и 183 с против прежнего среднего 223,4 с; Docker build на прогретом кэше — 4 с. Это измерение двух прогонов, не гарантированное время будущих релизов.
+
+Production-образ задаёт healthcheck: обычный интервал 15 с, startup-интервал 1 с в течение первых 20 с. Healthy возникает только после успешного `/api/health`, grace period не заменяет проверку. Нужен Docker Engine 25+; проверенная серверная версия — 29.1.3. У текущего серверного Compose нет собственных `start_period`/`start_interval`, поэтому Docker наследует их из образа: ручная правка серверных файлов для этого релиза не нужна. Репозиторный Compose задаёт те же значения явно (Compose 2.20.2+). Backup, rollback и публичные приёмочные HTTP-проверки не отключаются.
+
+Тесты Go и браузера и конфигурация Playwright исключены только из Docker build context: они всё ещё запускаются на runner из checkout. Изменения только тестов не инвалидируют COPY исходников и production compile.
 
 Повторять release следует **полным rerun workflow**, а не только упавшим job: имя artifact и образа включает `run_attempt`, и deploy должен получить образ текущей попытки.
 

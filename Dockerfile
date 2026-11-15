@@ -20,4 +20,5 @@ COPY --from=web /app/web/dist /app/web
 USER app
 ENV WEB_DIST=/app/web LISTEN_ADDR=:8080
 EXPOSE 8080
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --start-interval=1s --retries=3 CMD wget -q -O /dev/null http://localhost:8080/api/health
 CMD ["/app/labturn"]

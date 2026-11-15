@@ -71,12 +71,8 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Go tests, vet and UI server
-        run: go test -race -count=1 ./... && go vet ./... && go build -o ../labturn .
-        working-directory: backend
-      - name: Frontend and browser setup
-        run: npm ci && npm run build && npx playwright install --with-deps chromium
-        working-directory: web
+      - name: Prepare Go and frontend in parallel (timed stages)
+        run: python3 scripts/prepare-ci.py
       - name: Start an isolated local app and seed demo data
         run: |
           WEB_DIST=web/dist ./labturn > /tmp/labturn.log 2>&1 &

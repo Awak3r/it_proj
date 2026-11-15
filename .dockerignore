@@ -1,6 +1,9 @@
 .git
 .local
 backend/it_proj
+backend/**/*_test.go
+web/tests
+web/playwright.config.ts
 /labturn
 .env
 .env.*

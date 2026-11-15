@@ -5,7 +5,7 @@ Go HTTP API + PostgreSQL 17 + React/TypeScript/Vite; Redis не требуетс
 ## Среда и исходники
 
 - Windows: WSL2 Ubuntu (`wsl --install -d Ubuntu` из PowerShell администратора; `wsl --list --verbose` должен показывать версию 2).
-- Docker Desktop: Linux containers, WSL2 engine и WSL Integration для Ubuntu. Нужны Git, Bash, Python 3, Go 1.24.x и Node.js 22; сверяйте версии с текущими файлами проекта/CI. `gh` нужен для Actions, не для локального запуска.
+- Docker Desktop: Linux containers, WSL2 engine и WSL Integration для Ubuntu. Для startup healthcheck нужны Docker Engine 25+ и Compose 2.20.2+. Нужны Git, Bash, Python 3, Go 1.24.x и Node.js 22; сверяйте версии с текущими файлами проекта/CI. `gh` нужен для Actions, не для локального запуска.
 - Храните checkout в файловой системе WSL, не `/mnt/c`. Текущий sandbox владельца находится в `/home/bogdanoff/study/labturn`; его нативные процессы и данные описаны отдельно в [LOCAL-SANDBOX.md](LOCAL-SANDBOX.md).
 
 Для нового checkout:
@@ -101,7 +101,7 @@ docker run -d --name labturn-local-tests \
 python3 -B -m unittest discover -s scripts -p 'test_*.py'
 python3 scripts/ci.py docs
 bash -n scripts/build-image.sh scripts/compose-production.sh
-(cd web && npm ci && npm run build && npx playwright install chromium)
+(cd web && npm ci && npm run build && npx playwright install --only-shell chromium)
 (cd web && BASE_URL=http://127.0.0.1:8080 npm test)
 ```
 
@@ -124,5 +124,7 @@ UI suite изменяет очередь и оценки: используйте
 ```
 
 `test:integration` использует `--no-deps`, чтобы отдельно не повторять mock-проект; обычный `npm test` включает оба проекта. `--workers=1` ограничивает и параллельный проект глобально. Таймауты, polling/SSE интервалы и число тестов ради ускорения не сокращаются.
+
+В CI `python3 scripts/prepare-ci.py` готовит Go и frontend параллельно, измеряет отдельные стадии и останавливает обе ветки при ошибке/отмене. Установка Chromium использует `--with-deps --only-shell`; это может устанавливать системные пакеты, поэтому локально обычного `playwright install --only-shell chromium` достаточно, если системные библиотеки уже есть. CI helper ожидает Go и Node.js 22 на PATH и отдельный локальный `TEST_DATABASE_URL`; не запускать его против сохраняемого sandbox.
 
 Фактический CI — [.github/workflows/checks.yml](../.github/workflows/checks.yml); параллельные тесты и единственная сборка образа описаны в [DEPLOYMENT.md](DEPLOYMENT.md). Фиксируйте команды, SHA, exit status и пропуски, не переносите исторический PASS на новый код.
