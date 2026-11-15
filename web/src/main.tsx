@@ -1937,7 +1937,7 @@ function EventView({
           />
         )}
       </section>
-      {history.length > 0 && (
+      {me.root && history.length > 0 && (
         <details className="panel history">
           <summary>История участия · {history.length}</summary>
           {history.map((e) => (

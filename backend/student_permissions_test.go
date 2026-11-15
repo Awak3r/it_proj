@@ -114,6 +114,35 @@ func TestStudentPermissionsCommands(t *testing.T) {
 	}
 }
 
+func TestStudentPermissionsAuditRootOnly(t *testing.T) {
+	s, _ := acceptanceServer(t)
+	acceptanceLab(t, s, 1)
+	acceptanceGrade(t, s, 2001, 3001, 1, 4, 0)
+	for _, uid := range []int64{1001, 2001, 3001} {
+		t.Run(fmt.Sprintf("user_%d", uid), func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, "/api/state", nil)
+			w := httptest.NewRecorder()
+			s.state(w, r, uid)
+			if w.Code != http.StatusOK {
+				t.Fatalf("state: HTTP %d: %s", w.Code, w.Body.String())
+			}
+			var state struct {
+				Audit []json.RawMessage `json:"audit"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &state); err != nil {
+				t.Fatal(err)
+			}
+			if s.roots[uid] {
+				if len(state.Audit) == 0 {
+					t.Fatal("root cannot see existing audit records")
+				}
+			} else if len(state.Audit) != 0 {
+				t.Fatalf("non-root received %d audit records", len(state.Audit))
+			}
+		})
+	}
+}
+
 func TestStudentPermissionsExport(t *testing.T) {
 	s, ctx := acceptanceServer(t)
 	acceptanceLab(t, s, 1)

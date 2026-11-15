@@ -41,8 +41,9 @@ function snapshot(privilege: "student" | "teacher" | "root"): State {
     entries: [1, 2, 3].flatMap((event_id) => [
       { id: event_id * 10, event_id, user_id: me.id, user_name: me.name, group_id: 1, state: "waiting", position: 2, score: 1, skipped: false, called_at: null, joined_at: "2030-01-01T09:00:00Z" },
       { id: event_id * 10 + 1, event_id, user_id: 3002, user_name: "Other student", group_id: 1, state: "called", position: 1, score: 1, skipped: false, called_at: "2030-01-01T10:00:00Z", joined_at: "2030-01-01T09:00:00Z" },
+      { id: event_id * 10 + 2, event_id, user_id: 3003, user_name: "Historical participant", group_id: 1, state: "completed", position: 3, score: 1, skipped: false, called_at: "2030-01-01T10:00:00Z", joined_at: "2030-01-01T09:00:00Z" },
     ]),
-    audit: [],
+    audit: [{ id: 1, actor_id: 3001, action: "grade_change", at: "2030-01-01T10:00:00Z", payload: {} }],
   };
 }
 
@@ -67,6 +68,7 @@ async function expectNoPrivilegedControls(page: Page) {
     name: /^(Добавить работу|Экспорт|Создать событие|Изменить событие|Изменить|Открыть запись|Закрыть запись|Начать приём|Вызвать следующего|Завершить событие|Отменить событие|Пропустить|Завершить приём|Перемешать один раз|Управление|Мои события|Перейти к управлению)$|^(Переместить|Удалить) /,
   })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Управление очередью" })).toHaveCount(0);
+  await expect(page.locator(".history, .audit")).toHaveCount(0);
   await expect(page.locator("select.grade")).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
 }
@@ -95,6 +97,32 @@ for (const privilege of ["student", "teacher", "root"] as const) {
       expect(commands).toEqual([]);
     });
   }
+}
+
+for (const privilege of ["student", "teacher", "root"] as const) {
+  test(`history is root-only for ${privilege} account`, async ({ page }) => {
+    await open(page, snapshot(privilege));
+    if (privilege !== "student") {
+      await page.getByRole("button", { name: "Сменить роль" }).click();
+      await page.getByRole("button", {
+        name: privilege === "root" ? "Управление root →" : "Я преподаватель",
+        exact: true,
+      }).click();
+    }
+    await page.getByRole("button").filter({ has: page.getByRole("heading", { name: "Permission event live", exact: true }) }).click();
+    await expect(page.getByRole("heading", { name: "Порядок приёма" })).toBeVisible();
+    await expect(page.locator(".history")).toHaveCount(privilege === "root" ? 1 : 0);
+    if (privilege === "root") {
+      await page.locator(".history summary").click();
+      await expect(page.locator(".history .admin-row")).toContainText("Historical participant");
+      await page.locator("nav").getByRole("button", { name: "Управление", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Последние изменения" })).toBeVisible();
+      await expect(page.locator(".audit")).toContainText("grade_change");
+    } else {
+      await expect(page.locator(".audit")).toHaveCount(0);
+      await expect(page.locator("nav").getByRole("button", { name: "Управление", exact: true })).toHaveCount(0);
+    }
+  });
 }
 
 test("revoking teacher privileges closes an already-open teacher form", async ({ page }) => {
