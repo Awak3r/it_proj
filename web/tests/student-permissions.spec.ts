@@ -68,7 +68,7 @@ async function expectNoPrivilegedControls(page: Page) {
     name: /^(Добавить работу|Экспорт|Создать событие|Изменить событие|Изменить|Открыть запись|Закрыть запись|Начать приём|Вызвать следующего|Завершить событие|Отменить событие|Пропустить|Завершить приём|Перемешать один раз|Управление|Мои события|Перейти к управлению)$|^(Переместить|Удалить) /,
   })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Управление очередью" })).toHaveCount(0);
-  await expect(page.locator(".history, .audit")).toHaveCount(0);
+  await expect(page.locator(".audit")).toHaveCount(0);
   await expect(page.locator("select.grade")).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
 }
@@ -100,7 +100,7 @@ for (const privilege of ["student", "teacher", "root"] as const) {
 }
 
 for (const privilege of ["student", "teacher", "root"] as const) {
-  test(`history is root-only for ${privilege} account`, async ({ page }) => {
+  test(`audit is root-only and participation history remains available for ${privilege} account`, async ({ page }) => {
     await open(page, snapshot(privilege));
     if (privilege !== "student") {
       await page.getByRole("button", { name: "Сменить роль" }).click();
@@ -111,7 +111,7 @@ for (const privilege of ["student", "teacher", "root"] as const) {
     }
     await page.getByRole("button").filter({ has: page.getByRole("heading", { name: "Permission event live", exact: true }) }).click();
     await expect(page.getByRole("heading", { name: "Порядок приёма" })).toBeVisible();
-    await expect(page.locator(".history")).toHaveCount(privilege === "root" ? 1 : 0);
+    await expect(page.locator(".history")).toHaveCount(1);
     if (privilege === "root") {
       await page.locator(".history summary").click();
       await expect(page.locator(".history .admin-row")).toContainText("Historical participant");
@@ -126,7 +126,7 @@ for (const privilege of ["student", "teacher", "root"] as const) {
 }
 
 for (const teacherFlag of [false, true]) {
-  test(`root account in teacher mode cannot see management or history (teacher=${teacherFlag})`, async ({ page }) => {
+  test(`teacher mode retains management but hides only audit (teacher=${teacherFlag})`, async ({ page }) => {
     const state = snapshot("root");
     state.me.teacher = teacherFlag;
     await open(page, state);
@@ -137,14 +137,22 @@ for (const teacherFlag of [false, true]) {
 
     await page.getByRole("button", { name: "Сменить роль" }).click();
     await page.getByRole("button", { name: "Я преподаватель", exact: true }).click();
-    await expect(page.locator("nav").getByRole("button", { name: "Управление", exact: true })).toHaveCount(0);
+    await expect(page.locator("nav").getByRole("button", { name: "Управление", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Создать событие" })).toBeVisible();
+    await page.locator("nav").getByRole("button", { name: "Управление", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Группы", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Назначения", exact: true })).toBeVisible();
     await expect(page.locator(".audit")).toHaveCount(0);
+    await page.locator("nav").getByRole("button", { name: "События", exact: true }).click();
     await page.getByRole("button").filter({ has: page.getByRole("heading", { name: "Permission event live", exact: true }) }).click();
     await expect(page.getByRole("heading", { name: "Управление очередью" })).toBeVisible();
-    await expect(page.locator(".history")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /^Переместить |^Удалить / })).toHaveCount(0);
+    await expect(page.locator(".history")).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Переместить Permission viewer", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Удалить Other student", exact: true })).toBeVisible();
     await page.locator("nav").getByRole("button", { name: "Ведомость", exact: true }).click();
     await expect(page.getByRole("button", { name: "Добавить работу" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Экспорт", exact: true })).toBeVisible();
+    await expect(page.locator("select.grade")).toHaveCount(1);
 
     await page.getByRole("button", { name: "Сменить роль" }).click();
     await page.getByRole("button", { name: "Управление root →", exact: true }).click();

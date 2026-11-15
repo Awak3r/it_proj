@@ -212,8 +212,8 @@ function App() {
   // The selected view can hide account privileges, never grant new ones.
   const me = {
     ...data.me,
-    teacher: role === "teacher" && (data.me.teacher || !!data.me.root),
-    root: role === "root" && !!data.me.root,
+    teacher: role !== "student" && data.me.teacher,
+    root: role !== "student" && data.me.root,
   };
   const teacher = me.teacher || me.root;
   const groups = data.groups.filter((g) => !g.archived);
@@ -1313,18 +1313,20 @@ function App() {
                       ))}
                     </section>
                   </div>
-                  <section className="panel audit">
-                    <h2>Последние изменения</h2>
-                    {data.audit.slice(0, 20).map((a) => (
-                      <div className="admin-row" key={a.id}>
-                        <span>
-                          {a.action}
-                          <small>Пользователь {a.actor_id}</small>
-                        </span>
-                        <small>{date(a.at)}</small>
-                      </div>
-                    ))}
-                  </section>
+                  {role === "root" && me.root && (
+                    <section className="panel audit">
+                      <h2>Последние изменения</h2>
+                      {data.audit.slice(0, 20).map((a) => (
+                        <div className="admin-row" key={a.id}>
+                          <span>
+                            {a.action}
+                            <small>Пользователь {a.actor_id}</small>
+                          </span>
+                          <small>{date(a.at)}</small>
+                        </div>
+                      ))}
+                    </section>
+                  )}
                 </>
               ) : null}
             </div>
@@ -1937,7 +1939,7 @@ function EventView({
           />
         )}
       </section>
-      {me.root && history.length > 0 && (
+      {history.length > 0 && (
         <details className="panel history">
           <summary>История участия · {history.length}</summary>
           {history.map((e) => (
