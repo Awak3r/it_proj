@@ -485,6 +485,11 @@ function App() {
                   await command({ kind: "profile", name, group_id });
                 }}
                 back={() => setRole("")}
+                manageGroups={() => {
+                  setRole("root");
+                  setTab("admin");
+                  setEventID(undefined);
+                }}
               />
             )}
           </section>
@@ -1225,12 +1230,14 @@ function Profile({
   role,
   save,
   back,
+  manageGroups,
 }: {
   me: State["me"];
   groups: State["groups"];
   role: string;
   save: (n: string, g: number) => Promise<void>;
   back: () => void;
+  manageGroups: () => void;
 }) {
   const [n, setN] = useState(me.name);
   const [g, setG] = useState(me.group_id || 0);
@@ -1240,6 +1247,7 @@ function Profile({
     <form
       onSubmit={async (e) => {
         e.preventDefault();
+        if (role === "student" && (!groups.length || !g)) return;
         setBusy(true);
         try {
           await save(n, g);
@@ -1259,11 +1267,26 @@ function Profile({
           maxLength={200}
         />
       </label>
-      {role === "student" && (
+      {role === "student" && !groups.length ? (
+        <div className="info" role="status">
+          <b>Групп пока нет.</b>{" "}
+          {me.root ? (
+            <>
+              Создайте учебную группу в управлении, затем вернитесь к входу
+              студента.
+              <button type="button" className="link" onClick={manageGroups}>
+                Перейти к управлению
+              </button>
+            </>
+          ) : (
+            "Обратитесь к администратору, чтобы он добавил вашу учебную группу."
+          )}
+        </div>
+      ) : role === "student" ? (
         <label>
           Ваша группа
           <select
-            value={g}
+            value={g || ""}
             disabled={!!me.group_id}
             onChange={(e) => setG(Number(e.target.value))}
             required
@@ -1276,9 +1299,13 @@ function Profile({
             ))}
           </select>
         </label>
-      )}
+      ) : null}
       {err && <div className="alert">{err}</div>}
-      <button disabled={busy || !n.trim() || (role === "student" && !g)}>
+      <button
+        disabled={
+          busy || !n.trim() || (role === "student" && (!groups.length || !g))
+        }
+      >
         Продолжить <ArrowRight size={18} />
       </button>
       <button type="button" className="link" onClick={back}>
