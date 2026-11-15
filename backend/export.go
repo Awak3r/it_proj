@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/xuri/excelize/v2"
@@ -259,12 +263,59 @@ func (s *server) exportGradebook(w http.ResponseWriter, r *http.Request, uid int
 		f.SetColWidth(sheet, colName, colName, float64(width))
 	}
 
-	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-	w.Header().Set("Content-Disposition", `attachment; filename="labturn_gradebook_`+strconv.FormatInt(subjectID, 10)+`_`+strconv.FormatInt(groupID, 10)+`.xlsx"`)
-	if e := f.Write(w); e != nil {
+	if s.token == "" {
+		writeError(w, fail("Отправка недоступна: бот не настроен"))
+		return
+	}
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	if e = form.WriteField("chat_id", strconv.FormatInt(uid, 10)); e != nil {
 		writeError(w, e)
 		return
 	}
+	part, e := form.CreateFormFile("document", fmt.Sprintf("labturn_gradebook_%d_%d.xlsx", subjectID, groupID))
+	if e != nil {
+		writeError(w, e)
+		return
+	}
+	if e = f.Write(part); e != nil {
+		writeError(w, e)
+		return
+	}
+	if e = form.Close(); e != nil {
+		writeError(w, e)
+		return
+	}
+	req, e := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.telegram.org/bot"+s.token+"/sendDocument", &body)
+	if e != nil {
+		writeError(w, fail("Не удалось подготовить отправку ведомости"))
+		return
+	}
+	req.Header.Set("Content-Type", form.FormDataContentType())
+	client := &http.Client{Timeout: 45 * time.Second}
+	response, e := client.Do(req)
+	if e != nil {
+		writeError(w, fail("Telegram не подтвердил отправку. Проверьте личный чат с ботом перед повтором"))
+		return
+	}
+	defer response.Body.Close()
+	var result struct {
+		OK        bool `json:"ok"`
+		ErrorCode int  `json:"error_code"`
+	}
+	if e = json.NewDecoder(response.Body).Decode(&result); e != nil {
+		writeError(w, fail("Telegram не подтвердил отправку. Проверьте личный чат с ботом перед повтором"))
+		return
+	}
+	if response.StatusCode != http.StatusOK || !result.OK {
+		message := "Не удалось отправить ведомость через Telegram. Попробуйте позже"
+		if result.ErrorCode == 403 || result.ErrorCode == 400 {
+			message = "Откройте личный чат с @labturn_bot, нажмите Старт и разрешите боту отправлять сообщения, затем повторите экспорт"
+		}
+		writeError(w, fail(message))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func studentByID(list []exportStudent, id int64) (*exportStudent, bool) {

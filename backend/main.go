@@ -111,7 +111,7 @@ func main() {
 	})
 	mux.HandleFunc("GET /api/config", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]bool{"dev_auth": s.dev}) })
 	mux.HandleFunc("GET /api/state", s.auth(s.state))
-	mux.HandleFunc("GET /api/export", s.auth(s.exportGradebook))
+	mux.HandleFunc("POST /api/export", s.auth(s.exportGradebook))
 	mux.HandleFunc("GET /api/updates", s.auth(s.streamUpdates))
 	mux.HandleFunc("POST /api/command", s.auth(s.command))
 	dist := env("WEB_DIST", "../web/dist")

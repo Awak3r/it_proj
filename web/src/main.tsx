@@ -437,7 +437,7 @@ function App() {
     try {
       const res = await fetch(
         `/api/export?subject_id=${currentSubject}&group_id=${currentGroup}`,
-        { headers: authHeaders() },
+        { method: "POST", headers: authHeaders() },
       );
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -445,14 +445,7 @@ function App() {
           data.error || "Не удалось выгрузить ведомость",
         );
       }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `gradebook_${currentSubject}_${currentGroup}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
-      setNotice("Ведомость выгружена");
+      setNotice("Ведомость отправлена в личный чат с ботом");
     } catch (e) {
       setError((e as Error).message);
     } finally {
