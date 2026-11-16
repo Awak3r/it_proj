@@ -147,9 +147,9 @@ async function openSynthetic(page: Page, state: State, rejectGrade = false, stud
 }
 
 for (const root of [false, true]) {
-  test(`student mode hides teacher controls for a privileged account (root=${root})`, async ({ page }) => {
-    const state = snapshot();
-    state.me = { ...state.me, group_id: 1, root };
+  test(`student mode hides teaching controls (root=${root}, teacher=false)`, async ({ page }) => {
+    const state = snapshot(true);
+    state.me = { ...state.me, root };
     await openSynthetic(page, state, false, true);
     await expect(page.getByRole("button", { name: "Добавить работу" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Экспорт", exact: true })).toHaveCount(0);
@@ -157,8 +157,14 @@ for (const root of [false, true]) {
     await expect(page.locator("nav").getByRole("button", { name: "Управление", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Сменить роль" }).click();
     await page.getByRole("button", { name: "Я преподаватель", exact: true }).click();
-    await openGrades(page);
-    await expect(page.getByRole("button", { name: "Добавить работу" })).toBeVisible();
+    if (root) {
+      await openGrades(page);
+      await expect(page.getByRole("button", { name: "Добавить работу" })).toBeVisible();
+      await expect(page.locator("select.grade").first()).toBeEnabled();
+    } else {
+      await expect(page.getByText("Роль преподавателя выдаёт root.", { exact: false })).toBeVisible();
+      await expect(page.locator("nav")).toHaveCount(0);
+    }
   });
 }
 

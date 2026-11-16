@@ -18,7 +18,7 @@ const gradingCTE = `WITH totals AS (
         COUNT(*) FILTER (WHERE l.required)::int AS required_total,
         COUNT(*) FILTER (WHERE l.required AND g.value>=3)::int AS required_passed
     FROM labs l
-    JOIN users u ON u.group_id=l.group_id
+    JOIN users u ON u.group_id=l.group_id AND NOT u.teacher
     LEFT JOIN grades g ON g.lab_id=l.id AND g.student_id=u.id
     WHERE NOT l.archived AND ` + visibleLab + `
     GROUP BY u.id,l.subject_id,l.group_id

@@ -5,7 +5,7 @@ function snapshot(privilege: "student" | "teacher" | "root"): State {
   const me = {
     id: 3001,
     name: "Permission viewer",
-    group_id: 1,
+    group_id: privilege === "teacher" ? null : 1,
     teacher: privilege === "teacher",
     root: privilege === "root",
   };
@@ -59,7 +59,7 @@ async function open(page: Page, state: State) {
     return route.abort();
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Я студент", exact: true }).click();
+  await page.getByRole("button", { name: state.me.teacher ? "Я преподаватель" : "Я студент", exact: true }).click();
   await expect(page.getByRole("heading", { name: "События", exact: true })).toBeVisible();
   return commands;
 }
@@ -74,7 +74,7 @@ async function expectNoPrivilegedControls(page: Page) {
   await expect(page.getByRole("dialog")).toHaveCount(0);
 }
 
-for (const privilege of ["student", "teacher", "root"] as const) {
+for (const privilege of ["student", "root"] as const) {
   for (const width of [390, 1440]) {
     test(`student view has no privileged controls: ${privilege}, width ${width}`, async ({ page }) => {
       await page.setViewportSize({ width, height: 1000 });
@@ -198,6 +198,10 @@ for (const teacherFlag of [false, true]) {
   test(`teacher mode retains management but hides only audit (teacher=${teacherFlag})`, async ({ page }) => {
     const state = snapshot("root");
     state.me.teacher = teacherFlag;
+    if (teacherFlag) {
+      state.me.group_id = null;
+      state.users.push({ id: 3002, name: "Other student", group_id: 1, teacher: false });
+    }
     await open(page, state);
     await page.getByRole("button", { name: "Сменить роль" }).click();
     await page.getByRole("button", { name: "Управление root →", exact: true }).click();

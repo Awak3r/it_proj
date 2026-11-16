@@ -291,7 +291,7 @@ func TestWeightedExactDecimalAPI(t *testing.T) {
 	}
 }
 
-func TestWeightedDualRoleMembership(t *testing.T) {
+func TestWeightedLegacyTeacherExcludedFromMembership(t *testing.T) {
 	s, ctx := acceptanceServer(t)
 	s.dev = false
 	s.token = "synthetic-weighted:test"
@@ -311,7 +311,7 @@ func TestWeightedDualRoleMembership(t *testing.T) {
 		state := gradingSnapshot(t, s, 2001)
 		wantLabs, wantSummaries, wantGrades := 2, 22, 1
 		if teacher {
-			wantLabs, wantSummaries, wantGrades = 4, 24, 3
+			wantLabs, wantSummaries, wantGrades = 4, 22, 3
 		}
 		if len(state.Labs) != wantLabs || len(state.Summaries) != wantSummaries || len(state.Grades) != wantGrades {
 			t.Fatalf("dual-role visibility: labs=%d summaries=%d grades=%d", len(state.Labs), len(state.Summaries), len(state.Grades))
@@ -333,8 +333,8 @@ func TestWeightedDualRoleMembership(t *testing.T) {
 				}
 			}
 		}
-		if !ownSummary {
-			t.Fatal("teacher's own student summary missing")
+		if ownSummary == teacher {
+			t.Fatalf("student summary present=%v for teacher=%v", ownSummary, teacher)
 		}
 		classmate := false
 		for _, user := range state.Users {
@@ -352,7 +352,7 @@ func TestWeightedDualRoleMembership(t *testing.T) {
 	check(true)
 	notificationETAExec(t, s, ctx, "DELETE FROM assignments WHERE teacher_id=2001")
 	check(true) // No assignments are needed for any subject or group.
-	// Every viewer sees the dual-role member's student summary as well.
+	// Legacy teachers are excluded from student summaries for every viewer.
 	state := gradingSnapshot(t, s, 3001)
 	found := false
 	for _, summary := range state.Summaries {
@@ -360,8 +360,8 @@ func TestWeightedDualRoleMembership(t *testing.T) {
 			found = true
 		}
 	}
-	if !found {
-		t.Fatal("classmate cannot see dual-role member's summary")
+	if found {
+		t.Fatal("classmate sees legacy teacher as a student")
 	}
 	// Revoking the role must disable even a stale outside-group assignment,
 	// without changing student membership or own-group read access.
@@ -393,9 +393,9 @@ func TestWeightedSummaryScopeAndRevocation(t *testing.T) {
 	check(4001, 2, 2, 2)
 	check(2001, 4, 22, 4)
 	check(9001, 0, 0, 0)
-	// A teacher who is also a student retains the whole own-group gradebook.
+	// A legacy group does not make a teacher a student; revocation restores membership.
 	notificationETAExec(t, s, ctx, "UPDATE users SET group_id=1 WHERE id=2001")
-	check(2001, 4, 24, 4)
+	check(2001, 4, 22, 4)
 	gradingRequest(t, s, 1001, []byte(`{"kind":"role","user_id":2001,"enabled":false}`), 200)
 	check(2001, 2, 22, 2)
 	gradingRequest(t, s, 2001, []byte(`{"kind":"lab","id":1,"number":1,"name":"Revoked","weight":2}`), 403)

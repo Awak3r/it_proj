@@ -32,6 +32,7 @@ import { useTelegramTheme } from "./theme";
 import { startLiveUpdates } from "./live";
 import { GradeSummaryCells } from "./GradeSummaryCells";
 import { GradeStatisticsPanel } from "./GradeStatisticsPanel";
+import { StudentDirectory } from "./StudentDirectory";
 type Cmd = Record<string, unknown>;
 type Field = {
   name: string;
@@ -210,6 +211,7 @@ function App() {
     }
   }
   function changeRole(next: string) {
+    if (next === "student" && data?.me.teacher) return;
     setRole(next);
     setShowStatistics(false);
     setTab("events");
@@ -253,7 +255,8 @@ function App() {
   // The selected view can hide account privileges, never grant new ones.
   const me = {
     ...data.me,
-    teacher: role !== "student" && data.me.teacher,
+    group_id: data.me.teacher ? null : data.me.group_id,
+    teacher: data.me.teacher,
     root: role !== "student" && data.me.root,
   };
   const teacher = me.teacher || me.root;
@@ -280,13 +283,13 @@ function App() {
           value: me.name,
           required: true,
         },
-        ...(!me.group_id
+        ...(!data.me.teacher && !me.group_id
           ? [
               {
                 name: "group",
                 label: "Учебная группа",
                 options: [
-                  { value: 0, label: "Без группы (преподаватель)" },
+                  ...(data.me.root ? [{ value: 0, label: "Без группы" }] : []),
                   ...groups.map((g) => ({ value: g.id, label: g.name })),
                 ],
               },
@@ -296,13 +299,17 @@ function App() {
       (v) => ({
         kind: "profile",
         name: v.name,
-        group_id: me.group_id || Number(v.group),
+        group_id: data.me.teacher ? 0 : me.group_id || Number(v.group),
       }),
+      data.me.teacher
+        ? "Преподаватель не состоит в студенческой группе."
+        : `Ваша группа: ${groupName(me.group_id)}. Для смены группы обратитесь к администратору.`,
     );
   const roleScreen =
     !role ||
     (role === "teacher" && !teacher) ||
     (role === "root" && !me.root) ||
+    (role === "student" && data.me.teacher) ||
     !me.name ||
     (role === "student" && !me.group_id);
   function subjectForm(item?: State["subjects"][number]) {
@@ -676,16 +683,18 @@ function App() {
 
             {!role ? (
               <>
-                <button
-                  className="role-card"
-                  onClick={() => changeRole("student")}
-                >
-                  <GraduationCap />
-                  <span>
-                    <b>Я студент</b>
-                  </span>
-                  <ArrowRight />
-                </button>
+                {!data.me.teacher && (
+                  <button
+                    className="role-card"
+                    onClick={() => changeRole("student")}
+                  >
+                    <GraduationCap />
+                    <span>
+                      <b>Я студент</b>
+                    </span>
+                    <ArrowRight />
+                  </button>
+                )}
                 <button
                   className="role-card"
                   onClick={() => changeRole("teacher")}
@@ -701,6 +710,14 @@ function App() {
                     Управление root →
                   </button>
                 )}
+              </>
+            ) : role === "student" && data.me.teacher ? (
+              <>
+                <div className="info">
+                  Вам назначена роль преподавателя. Студенческий режим
+                  недоступен.
+                </div>
+                <button onClick={() => changeRole("")}>Назад</button>
               </>
             ) : role === "teacher" && !teacher ? (
               <>
@@ -753,7 +770,12 @@ function App() {
             <nav>
               {[
                 { id: "events", label: "События", icon: LayoutGrid },
-                { id: "mine", label: "Мои очереди", icon: ListOrdered },
+                ...(!data.me.teacher || mine.length > 0
+                  ? [{ id: "mine", label: "Мои очереди", icon: ListOrdered }]
+                  : []),
+                ...(!data.me.teacher
+                  ? [{ id: "group", label: "Моя группа", icon: Users }]
+                  : []),
                 { id: "grades", label: "Ведомость", icon: BookOpen },
                 ...(teacher
                   ? [
@@ -976,6 +998,39 @@ function App() {
                     />
                   )}
                 </>
+              ) : tab === "group" && !data.me.teacher ? (
+                <>
+                  <div className="page-title">
+                    <div>
+                      <h1>Моя группа</h1>
+                      <p>{groupName(me.group_id)}</p>
+                    </div>
+                  </div>
+                  <section className="panel">
+                    <h2>Студенты группы</h2>
+                    {data.users
+                      .filter(
+                        (u) =>
+                          !u.teacher &&
+                          !!me.group_id &&
+                          u.group_id === me.group_id,
+                      )
+                      .map((u) => (
+                        <div className="admin-row" key={u.id}>
+                          <span>
+                            {u.name || "Имя не указано"}
+                            {u.id === me.id ? " (вы)" : ""}
+                          </span>
+                        </div>
+                      ))}
+                    {!me.group_id && (
+                      <p>Группа не выбрана. Укажите её в профиле.</p>
+                    )}
+                    <p className="footnote">
+                      Для смены группы обратитесь к администратору.
+                    </p>
+                  </section>
+                </>
               ) : tab === "grades" ? (
                 <>
                   <div className="page-title">
@@ -1095,7 +1150,7 @@ function App() {
                           !l.archived,
                       )}
                       students={data.users.filter(
-                        (u) => u.group_id === currentGroup,
+                        (u) => !u.teacher && u.group_id === currentGroup,
                       )}
                       summaries={data.grade_summaries.filter(
                         (s) =>
@@ -1144,7 +1199,7 @@ function App() {
                           </thead>
                           <tbody>
                             {data.users
-                              .filter((u) => u.group_id === currentGroup)
+                              .filter((u) => !u.teacher && u.group_id === currentGroup)
                               .map((u) => {
                                 const labs = data.labs.filter(
                                   (l) =>
@@ -1474,49 +1529,33 @@ function App() {
                       </section>
                     )}
                     {rootMode && (
-                      <section className="panel">
-                        <div className="section-heading">
-                          <h2>Студенты</h2>
-                        </div>
-                        {data.users
-                          .filter((u) => !u.teacher && u.group_id !== null)
-                          .map((u) => (
-                            <div className="admin-row" key={u.id}>
-                              <span>
-                                {u.name || "Ожидает регистрации"}
-                                <small>
-                                  {u.id} · {groupName(u.group_id)}
-                                </small>
-                              </span>
-                              <button
-                                className="link"
-                                onClick={() =>
-                                  openForm(
-                                    "Перевод в другую группу",
-                                    [
-                                      {
-                                        name: "group",
-                                        label: "Новая группа",
-                                        options: groups.map((g) => ({
-                                          value: g.id,
-                                          label: g.name,
-                                        })),
-                                      },
-                                    ],
-                                    (v) => ({
-                                      kind: "transfer",
-                                      user_id: u.id,
-                                      group_id: Number(v.group),
-                                    }),
-                                    "Старые оценки сохраняются в прежней ведомости. Активные записи нужно закрыть заранее.",
-                                  )
-                                }
-                              >
-                                Группа
-                              </button>
-                            </div>
-                          ))}
-                      </section>
+                      <StudentDirectory
+                        students={data.users.filter(
+                          (u) => !u.teacher && u.group_id !== null,
+                        )}
+                        groupName={groupName}
+                        transfer={(u) =>
+                          openForm(
+                            "Перевод в другую группу",
+                            [
+                              {
+                                name: "group",
+                                label: "Новая группа",
+                                options: groups.map((g) => ({
+                                  value: g.id,
+                                  label: g.name,
+                                })),
+                              },
+                            ],
+                            (v) => ({
+                              kind: "transfer",
+                              user_id: u.id,
+                              group_id: Number(v.group),
+                            }),
+                            "Старые оценки сохраняются в прежней ведомости. Активные записи нужно закрыть заранее.",
+                          )
+                        }
+                      />
                     )}
                   </div>
                   {rootMode && (
@@ -1580,7 +1619,7 @@ function Profile({
         if (role === "student" && (!groups.length || !g)) return;
         setBusy(true);
         try {
-          await save(n, g);
+          await save(n, me.teacher ? 0 : g);
         } catch (e) {
           setErr((e as Error).message);
         } finally {
@@ -1843,6 +1882,19 @@ function EventView({
   const my = entries.find((e) => e.user_id === me.id);
   const closed = ["completed", "cancelled"].includes(ev.state);
   const unshuffled = ev.strategy === "random" && !ev.shuffled;
+  const joinReason = me.teacher
+    ? "Преподаватель не может записываться в студенческую очередь."
+    : ev.teacher_id === me.id
+      ? "Нельзя записаться на собственное событие."
+      : closed
+        ? "Событие завершено или отменено."
+        : !ev.registration_open
+          ? "Запись закрыта преподавателем. Статус «Идёт приём» не означает, что запись открыта."
+          : !me.group_id
+            ? "Для записи укажите учебную группу в профиле."
+            : !ev.group_ids.includes(me.group_id)
+              ? "Событие недоступно вашей группе."
+              : "";
   const position = my ? entries.findIndex((e) => e.id === my.id) + 1 : 0;
   const average = ev.average_minutes || ev.duration;
   let wait = average ? Math.max(0, position - 1) * average : 0;
@@ -1889,19 +1941,19 @@ function EventView({
             >
               Выйти из очереди
             </button>
-          ) : (
+          ) : !me.teacher && ev.teacher_id !== me.id ? (
             <button
-              disabled={
-                busy ||
-                closed ||
-                !ev.registration_open ||
-                !me.group_id ||
-                !ev.group_ids.includes(me.group_id)
-              }
+              disabled={busy || !!joinReason}
+              aria-describedby={joinReason ? "join-reason" : undefined}
               onClick={() => command("join")}
             >
               Записаться <Plus size={16} />
             </button>
+          ) : null}
+          {!my && joinReason && (
+            <p id="join-reason" className="footnote">
+              {joinReason}
+            </p>
           )}
         </section>
         <section className="panel">

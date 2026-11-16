@@ -52,14 +52,14 @@ func TestStatisticsRosterCountsAndAccess(t *testing.T) {
  (4001,1,2),(4001,5,5),(4001,6,NULL);`)
 	want := statisticsState{
 		Boards: []gradeStatistics{
-			{SubjectID: 1, GroupID: 1, StudentsCount: 2, LabsCount: 3, RequiredLabsCount: 2, DebtorsCount: 1, FinalReadyCount: 1, Average: statisticsNumber("3.53"), Distribution: gradeDistribution{Missing: 2, Two: 1, Three: 1, Four: 1, Five: 1}},
+			{SubjectID: 1, GroupID: 1, StudentsCount: 1, LabsCount: 3, RequiredLabsCount: 2, DebtorsCount: 1, Average: statisticsNumber("3.80"), Distribution: gradeDistribution{Missing: 1, Two: 1, Five: 1}},
 			{SubjectID: 2, GroupID: 2, LabsCount: 1, RequiredLabsCount: 1},
 			{SubjectID: 2, GroupID: 3, StudentsCount: 1, LabsCount: 1, Distribution: gradeDistribution{Missing: 1}},
 		},
 		Labs: []labStatistics{
-			{LabID: 1, SubjectID: 1, GroupID: 1, StudentsCount: 2, GradedCount: 2, PassedCount: 2, Average: statisticsNumber("4.00")},
-			{LabID: 2, SubjectID: 1, GroupID: 1, StudentsCount: 2, GradedCount: 1, FailedCount: 1, MissingCount: 1, Average: statisticsNumber("2.00")},
-			{LabID: 3, SubjectID: 1, GroupID: 1, StudentsCount: 2, GradedCount: 1, PassedCount: 1, MissingCount: 1, Average: statisticsNumber("4.00")},
+			{LabID: 1, SubjectID: 1, GroupID: 1, StudentsCount: 1, GradedCount: 1, PassedCount: 1, Average: statisticsNumber("5.00")},
+			{LabID: 2, SubjectID: 1, GroupID: 1, StudentsCount: 1, GradedCount: 1, FailedCount: 1, Average: statisticsNumber("2.00")},
+			{LabID: 3, SubjectID: 1, GroupID: 1, StudentsCount: 1, MissingCount: 1},
 			{LabID: 5, SubjectID: 2, GroupID: 2},
 			{LabID: 6, SubjectID: 2, GroupID: 3, StudentsCount: 1, MissingCount: 1},
 		},

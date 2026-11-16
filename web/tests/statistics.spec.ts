@@ -602,7 +602,7 @@ for (const privileged of [false, true]) {
   }) => {
     const state = snapshot();
     state.me = privileged
-      ? { ...state.me, group_id: 1, root: true }
+      ? { ...state.me, group_id: 1, root: true, teacher: false }
       : state.users[1];
     await openSynthetic(page, state, true);
     await expect(

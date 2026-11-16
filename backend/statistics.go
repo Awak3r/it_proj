@@ -74,7 +74,7 @@ func readStatistics(ctx context.Context, tx pgx.Tx, uid int64, root bool) ([]gra
   COUNT(*) FILTER (WHERE g.value=2),COUNT(*) FILTER (WHERE g.value=3),
   COUNT(*) FILTER (WHERE g.value=4),COUNT(*) FILTER (WHERE g.value=5),
   COALESCE(SUM(g.value),0)::bigint
- FROM labs l LEFT JOIN users u ON u.group_id=l.group_id
+ FROM labs l LEFT JOIN users u ON u.group_id=l.group_id AND NOT u.teacher
  LEFT JOIN grades g ON g.lab_id=l.id AND g.student_id=u.id
  WHERE NOT l.archived AND `+boundLab+`
  GROUP BY l.id ORDER BY l.group_id,l.subject_id,l.id`)

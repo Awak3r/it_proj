@@ -180,7 +180,7 @@ func (s *server) state(w http.ResponseWriter, r *http.Request, uid int64) {
 	}
 	defer tx.Rollback(ctx)
 	var me json.RawMessage
-	e = tx.QueryRow(ctx, "SELECT to_jsonb(u)||jsonb_build_object('root',$2::boolean) FROM users u WHERE id=$1", uid, s.roots[uid]).Scan(&me)
+	e = tx.QueryRow(ctx, "SELECT to_jsonb(u)||jsonb_build_object('root',$2::boolean,'group_id',CASE WHEN u.teacher THEN NULL ELSE u.group_id END) FROM users u WHERE id=$1", uid, s.roots[uid]).Scan(&me)
 	if e != nil {
 		writeError(w, e)
 		return
@@ -190,7 +190,7 @@ func (s *server) state(w http.ResponseWriter, r *http.Request, uid int64) {
 		"groups":          "SELECT * FROM groups ORDER BY name",
 		"subjects":        `SELECT s.* FROM subjects s WHERE $2 OR (SELECT teacher FROM users WHERE id=$1) OR EXISTS(SELECT 1 FROM subject_groups sg WHERE sg.subject_id=s.id AND sg.group_id=(SELECT group_id FROM users WHERE id=$1)) ORDER BY s.name`,
 		"subject_groups":  `SELECT sg.* FROM subject_groups sg WHERE $2 OR (SELECT teacher FROM users WHERE id=$1) OR sg.group_id=(SELECT group_id FROM users WHERE id=$1) ORDER BY sg.subject_id,sg.group_id`,
-		"users":           `SELECT u.* FROM users u WHERE $2 OR u.id=$1 OR u.group_id=(SELECT group_id FROM users WHERE id=$1) OR (SELECT teacher FROM users WHERE id=$1) ORDER BY u.name`,
+		"users":           `SELECT u.id,u.name,CASE WHEN u.teacher THEN NULL ELSE u.group_id END AS group_id,u.teacher,u.created_at FROM users u WHERE $2 OR u.id=$1 OR u.group_id=(SELECT group_id FROM users WHERE id=$1) OR (SELECT teacher FROM users WHERE id=$1) ORDER BY u.name`,
 		"labs":            `SELECT l.*,l.weight::text AS weight_text FROM labs l WHERE ` + visibleLab + ` ORDER BY number,id`,
 		"grades":          `SELECT g.* FROM grades g JOIN labs l ON l.id=g.lab_id WHERE ` + visibleLab,
 		"grade_summaries": gradeSummariesSQL,
@@ -342,10 +342,14 @@ func (s *server) execute(ctx context.Context, tx pgx.Tx, uid int64, c command) e
 			return fail("Укажите имя (до 200 символов)")
 		}
 		var group *int64
-		if e := tx.QueryRow(ctx, "SELECT group_id FROM users WHERE id=$1", uid).Scan(&group); e != nil {
+		var teacher bool
+		if e := tx.QueryRow(ctx, "SELECT group_id,teacher FROM users WHERE id=$1", uid).Scan(&group, &teacher); e != nil {
 			return e
 		}
-		if group != nil && *group != c.GroupID {
+		if teacher && c.GroupID != 0 {
+			return fail("Преподаватель не может состоять в студенческой группе")
+		}
+		if !teacher && group != nil && *group != c.GroupID {
 			return fail("Группу может изменить только root")
 		}
 		if c.GroupID != 0 && !exists(ctx, tx, "SELECT EXISTS(SELECT 1 FROM groups WHERE id=$1 AND NOT archived)", c.GroupID) {
@@ -378,10 +382,16 @@ func (s *server) execute(ctx context.Context, tx pgx.Tx, uid int64, c command) e
 		if e := exec("INSERT INTO users(id) VALUES($1) ON CONFLICT DO NOTHING", c.UserID); e != nil {
 			return e
 		}
-		return exec("UPDATE users SET teacher=$2 WHERE id=$1", c.UserID, c.Enabled)
+		if c.Enabled && exists(ctx, tx, "SELECT EXISTS(SELECT 1 FROM entries WHERE user_id=$1 AND state IN ('waiting','called'))", c.UserID) {
+			return fail("Сначала закройте активные записи пользователя в очередях, затем назначьте преподавателем")
+		}
+		return exec("UPDATE users SET teacher=$2,group_id=CASE WHEN $2 THEN NULL ELSE group_id END WHERE id=$1", c.UserID, c.Enabled)
 	case "transfer":
 		if !root {
 			return forbidden()
+		}
+		if exists(ctx, tx, "SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND teacher)", c.UserID) {
+			return fail("Сначала отзовите роль преподавателя, затем выберите студенческую группу")
 		}
 		if !exists(ctx, tx, "SELECT EXISTS(SELECT 1 FROM groups WHERE id=$1 AND NOT archived)", c.GroupID) {
 			return fail("Выберите группу")
@@ -440,7 +450,7 @@ func (s *server) execute(ctx context.Context, tx pgx.Tx, uid int64, c command) e
 		if archived {
 			return fail("Работа в архиве")
 		}
-		if !exists(ctx, tx, "SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND group_id=$2)", c.UserID, group) {
+		if !exists(ctx, tx, "SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND group_id=$2 AND NOT teacher)", c.UserID, group) {
 			return fail("Студент не состоит в этой группе")
 		}
 		if c.Value != nil && (*c.Value < 2 || *c.Value > 5) {

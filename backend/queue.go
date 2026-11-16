@@ -49,6 +49,12 @@ func (s *server) queueCommand(ctx context.Context, tx pgx.Tx, uid int64, c comma
 	}
 	switch c.Kind {
 	case "join":
+		if ev.Teacher == uid {
+			return fail("Нельзя записаться на собственное событие")
+		}
+		if exists(ctx, tx, "SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND teacher)", uid) {
+			return fail("Преподаватель не может записываться в студенческую очередь")
+		}
 		if !active(ev) || !ev.Open {
 			return fail("Запись закрыта")
 		}
