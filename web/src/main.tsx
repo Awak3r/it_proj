@@ -33,6 +33,7 @@ import { startLiveUpdates } from "./live";
 import { GradeSummaryCells } from "./GradeSummaryCells";
 import { GradeStatisticsPanel } from "./GradeStatisticsPanel";
 import { StudentDirectory } from "./StudentDirectory";
+import { DirectoryList } from "./DirectoryList";
 type Cmd = Record<string, unknown>;
 type Field = {
   name: string;
@@ -1417,8 +1418,32 @@ function App() {
                             <Plus size={18} />
                           </button>
                         </div>
-                        {(kind === "group" ? data.groups : data.subjects).map(
-                          (v) => (
+                        <DirectoryList
+                          items={kind === "group" ? data.groups : data.subjects}
+                          label={
+                            kind === "group" ? "Поиск групп" : "Поиск предметов"
+                          }
+                          placeholder={
+                            kind === "group"
+                              ? "Название или ID"
+                              : "Название, ID или группа"
+                          }
+                          emptyMessage={
+                            kind === "group"
+                              ? "Группы не найдены"
+                              : "Предметы не найдены"
+                          }
+                          searchText={(v) =>
+                            `${v.name} ${v.id} ${v.archived ? "архив" : ""} ${
+                              kind === "subject"
+                                ? (data.subject_groups ?? [])
+                                    .filter((link) => link.subject_id === v.id)
+                                    .map((link) => groupName(link.group_id))
+                                    .join(" ")
+                                : ""
+                            }`
+                          }
+                          renderItem={(v) => (
                             <button
                               className="admin-row"
                               key={v.id}
@@ -1482,8 +1507,8 @@ function App() {
                               </span>
                               <ChevronRight size={16} />
                             </button>
-                          ),
-                        )}
+                          )}
+                        />
                       </section>
                     ))}
                     {rootMode && (
@@ -1515,9 +1540,13 @@ function App() {
                             <Plus size={18} />
                           </button>
                         </div>
-                        {data.users
-                          .filter((u) => u.teacher)
-                          .map((u) => (
+                        <DirectoryList
+                          items={data.users.filter((u) => u.teacher)}
+                          label="Поиск преподавателей"
+                          placeholder="Фамилия, имя или Telegram ID"
+                          emptyMessage="Преподаватели не найдены"
+                          searchText={(u) => `${u.name} ${u.id}`}
+                          renderItem={(u) => (
                             <div className="admin-row" key={u.id}>
                               <span>
                                 {u.name || "Ожидает регистрации"}
@@ -1542,7 +1571,8 @@ function App() {
                                 Отозвать роль
                               </button>
                             </div>
-                          ))}
+                          )}
+                        />
                         <p className="footnote">
                           Преподаватель сразу получает доступ ко всем группам и
                           предметам.
@@ -1582,15 +1612,24 @@ function App() {
                   {rootMode && (
                     <section className="panel audit">
                       <h2>Последние изменения</h2>
-                      {data.audit.slice(0, 20).map((a) => (
-                        <div className="admin-row" key={a.id}>
-                          <span>
-                            {a.action}
-                            <small>Пользователь {a.actor_id}</small>
-                          </span>
-                          <small>{date(a.at)}</small>
-                        </div>
-                      ))}
+                      <DirectoryList
+                        items={data.audit}
+                        label="Поиск изменений"
+                        placeholder="Действие, пользователь или дата"
+                        emptyMessage="Изменения не найдены"
+                        searchText={(a) =>
+                          `${a.action} ${a.actor_id} ${data.users.find((u) => u.id === a.actor_id)?.name ?? ""} ${date(a.at)}`
+                        }
+                        renderItem={(a) => (
+                          <div className="admin-row" key={a.id}>
+                            <span>
+                              {a.action}
+                              <small>Пользователь {a.actor_id}</small>
+                            </span>
+                            <small>{date(a.at)}</small>
+                          </div>
+                        )}
+                      />
                     </section>
                   )}
                 </>

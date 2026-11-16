@@ -311,7 +311,7 @@ async function directory(page: Page) {
   });
 }
 
-test("admin directory paginates 25 students and excludes teachers on every page", async ({
+test("admin directory paginates 5 students and excludes teachers on every page", async ({
   page,
 }) => {
   const panel = await directory(page);
@@ -321,12 +321,12 @@ test("admin directory paginates 25 students and excludes teachers on every page"
   await expect(
     panel.getByRole("button", { name: "Предыдущая", exact: true }),
   ).toBeDisabled();
-  for (const [index, count] of [25, 25, 3].entries()) {
+  for (const [index, count] of [...Array(10).fill(5), 3].entries()) {
     await expect(rows).toHaveCount(count);
-    await expect(panel).toContainText(`Страница ${index + 1} из 3`);
+    await expect(panel).toContainText(`Страница ${index + 1} из 11`);
     await expect(panel).not.toContainText("Скрытый Преподаватель");
     names.push(...(await rows.allTextContents()));
-    if (index < 2)
+    if (index < 10)
       await panel
         .getByRole("button", { name: "Следующая", exact: true })
         .click();
@@ -336,8 +336,8 @@ test("admin directory paginates 25 students and excludes teachers on every page"
     panel.getByRole("button", { name: "Следующая", exact: true }),
   ).toBeDisabled();
   await panel.getByRole("button", { name: "Предыдущая", exact: true }).click();
-  await expect(rows).toHaveCount(25);
-  await expect(panel).toContainText("Страница 2 из 3");
+  await expect(rows).toHaveCount(5);
+  await expect(panel).toContainText("Страница 10 из 11");
 });
 
 test("admin directory searches normalized name, group, ID and no-match, resetting paging", async ({
@@ -362,7 +362,9 @@ test("admin directory searches normalized name, group, ID and no-match, resettin
     await expect(panel.getByRole("status")).toHaveText("Найдено: 1");
   }
   await search.fill("пи-202");
-  await expect(panel.locator(".admin-row")).toHaveCount(23);
+  await expect(panel.locator(".admin-row")).toHaveCount(5);
+    await expect(panel.getByRole("status")).toHaveText("Найдено: 23");
+    await expect(panel).toContainText("Страница 1 из 5");
   await expect(
     panel.locator(".admin-row").filter({ hasText: "ИВТ-Ё01" }),
   ).toHaveCount(0);
@@ -373,8 +375,8 @@ test("admin directory searches normalized name, group, ID and no-match, resettin
   ).toBeVisible();
   await expect(panel.getByRole("status")).toHaveText("Найдено: 0");
   await search.fill("");
-  await expect(panel.locator(".admin-row")).toHaveCount(25);
-  await expect(panel).toContainText("Страница 1 из 3");
+  await expect(panel.locator(".admin-row")).toHaveCount(5);
+  await expect(panel).toContainText("Страница 1 из 11");
 });
 
 for (const width of [390, 1440]) {

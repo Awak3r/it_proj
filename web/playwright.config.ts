@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 // Only explicitly audited, network-isolated specs may run concurrently.
 const mockedSpecs =
-  /(?:^|[\\/])(?:acceptance|bug-reports|command-recovery|queue-layout|notification-eta|onboarding|safe-area|student-permissions|weighted-grading|statistics|subject-groups)\.spec\.ts$/;
+  /(?:^|[\\/])(?:acceptance|admin-directory|bug-reports|command-recovery|queue-layout|notification-eta|onboarding|safe-area|student-permissions|weighted-grading|statistics|subject-groups)\.spec\.ts$/;
 
 export default defineConfig({
   testDir: "tests",
