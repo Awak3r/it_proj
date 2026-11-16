@@ -1,0 +1,13 @@
+
+> labqueue@0.1.0 test
+> playwright test tests/recovery.spec.ts
+
+
+Running 2 tests using 1 worker
+
+(node:14541) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/recovery.spec.ts:12:1 › stale snapshot cannot roll back a saved grade (4.5s)
+  ✓  2 tests/recovery.spec.ts:54:1 › lost response retries the same grade without a second write (1.3s)
+
+  2 passed (7.4s)

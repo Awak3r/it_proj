@@ -1,0 +1,67 @@
+name: LabTurn production
+
+on:
+  push:
+    branches: [codex/labturn-mvp]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+
+jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml
+    with:
+      release: true
+
+  deploy:
+    needs: checks
+    if: needs.checks.outputs.runtime == 'true' && github.ref == 'refs/heads/codex/labturn-mvp'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    concurrency:
+      group: labturn-production
+      cancel-in-progress: false
+    env:
+      IMAGE: labturn-app:gh-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Reject superseded application releases
+        id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci.py current
+      - uses: actions/download-artifact@v4
+        if: steps.current.outputs.current == 'true'
+        with:
+          name: labturn-image-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release
+      - name: Publish prebuilt image over restricted SSH
+        if: steps.current.outputs.current == 'true'
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$VPS_SSH_KEY" ]]; then
+            echo '::error::Set VPS_SSH_KEY in the production environment; no deployment was attempted.'
+            exit 1
+          fi
+          [[ "$IMAGE" =~ ^labturn-app:gh-[a-f0-9]{40}-[0-9]+-[0-9]+$ ]]
+          cd release
+          sha256sum -c image.tar.gz.sha256
+          umask 077
+          KEY=$(mktemp "$RUNNER_TEMP/labturn-ci-key.XXXXXX")
+          trap 'rm -f "$KEY"' EXIT
+          printf '%s\n' "$VPS_SSH_KEY" > "$KEY"
+          unset VPS_SSH_KEY
+          SSH=(ssh -T -i "$KEY" -o IdentitiesOnly=yes -o BatchMode=yes
+            -o StrictHostKeyChecking=yes
+            -o "UserKnownHostsFile=$GITHUB_WORKSPACE/.github/vps_known_hosts"
+            -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3
+            ubuntu@92.5.236.71)
+          "${SSH[@]}" labturn-check < /dev/null
+          "${SSH[@]}" "labturn-deploy $IMAGE" < image.tar.gz

@@ -1,0 +1,7 @@
+{$PUBLIC_HOST} {
+  @compressible not path /api/updates
+  encode @compressible zstd gzip
+  reverse_proxy app:8080 {
+    flush_interval -1
+  }
+}

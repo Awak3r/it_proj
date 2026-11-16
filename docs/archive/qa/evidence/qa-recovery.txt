@@ -1,0 +1,57 @@
+
+> labqueue@0.1.0 test
+> playwright test tests/recovery.spec.ts
+
+
+Running 2 tests using 1 worker
+
+(node:14068) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/recovery.spec.ts:12:1 › stale snapshot cannot roll back a saved grade (30.1s)
+(node:14232) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  2 tests/recovery.spec.ts:54:1 › lost response retries the same grade without a second write (30.1s)
+
+
+  1) tests/recovery.spec.ts:12:1 › stale snapshot cannot roll back a saved grade ───────────────────
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.selectOption: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for getByLabel('Предмет', { exact: true })
+
+
+       7 |   await page.getByRole("button", { name: "Я преподаватель", exact: false }).click();
+       8 |   await page.getByRole("button", { name: "Ведомость", exact: true }).click();
+    >  9 |   await page.getByLabel("Предмет", { exact: true }).selectOption("1");
+         |                                                     ^
+      10 | }
+      11 |
+      12 | test("stale snapshot cannot roll back a saved grade", async ({ page }) => {
+        at gradebook (/workspace/it_proj/web/tests/recovery.spec.ts:9:53)
+        at /workspace/it_proj/web/tests/recovery.spec.ts:13:3
+
+    Error Context: test-results/recovery-stale-snapshot-cannot-roll-back-a-saved-grade/error-context.md
+
+  2) tests/recovery.spec.ts:54:1 › lost response retries the same grade without a second write ─────
+
+    Test timeout of 30000ms exceeded.
+
+    Error: apiRequestContext.post: Test timeout of 30000ms exceeded.
+
+      59 |   const name = "QA recovery " + crypto.randomUUID();
+      60 |   const command = async (user: number, data: object) => {
+    > 61 |     const r = await page.request.post("/api/command", {
+         |                                  ^
+      62 |       headers: { "X-Dev-User": String(user), "Idempotency-Key": crypto.randomUUID() }, data,
+      63 |     });
+      64 |     expect(r.ok(), await r.text()).toBeTruthy();
+        at command (/workspace/it_proj/web/tests/recovery.spec.ts:61:34)
+        at /workspace/it_proj/web/tests/recovery.spec.ts:103:11
+
+    Error Context: test-results/recovery-lost-response-ret-faa8f-rade-without-a-second-write/error-context.md
+
+  2 failed
+    tests/recovery.spec.ts:12:1 › stale snapshot cannot roll back a saved grade ────────────────────
+    tests/recovery.spec.ts:54:1 › lost response retries the same grade without a second write ──────

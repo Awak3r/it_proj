@@ -1,0 +1,14 @@
+Case,Run,Status,Result,Evidence
+QA-01,before,Completed,FAILED,evidence/qa01-before.txt: expected 5; received empty after successful POST
+QA-01,after,Completed,PASSED,evidence/qa01-after.txt: 1 passed; late snapshot and second write verified
+QA-02,initial,Completed,FAILED,evidence/qa02.txt: DB version assertion mismatch; investigating test fixture mapping
+QA-01/02,fixture correction,Completed,FAILED,evidence/qa-recovery.txt: exact label selector timed out; test harness issue
+QA-03,targeted,Completed,PASSED,evidence/qa03.txt: revoked assignment/role denied; API scope empty; grant restored
+QA-01,explicit subject,Completed,PASSED,evidence/qa-recovery-fixed.txt: UI and persisted grade for subject 1
+QA-02,corrected fixture,Completed,PASSED,evidence/qa-recovery-fixed.txt: same key; one version; finish blocked
+QA-04,targeted,Completed,PASSED,evidence/qa04.txt: concurrent conflict; 10 identical retries; server recreation
+QA-05,targeted,Completed,PASSED,evidence/qa05.txt: 503/backoff/retry/new server/no repeat; fake HTTP transport
+QA-02,failed refresh,Completed,PASSED,evidence/qa02-refresh.txt: failed GET retains edit; retry confirms without new version
+QA-06,Go full suite,Completed,PASSED,evidence/qa-go-full.txt: 23 named subtests; race detector; no skips
+QA-06,static/build,Completed,PASSED,go vet and go build exit 0; TypeScript/Vite build exit 0
+QA-06,UI full suite,Completed,PASSED,evidence/qa-ui-full.txt: 8/8 passed; freshly built Go server on 8081

@@ -1,0 +1,132 @@
+name: LabTurn checks
+on:
+  pull_request:
+  workflow_call:
+    inputs:
+      release:
+        description: Export the checked image for the production workflow
+        type: boolean
+        default: false
+    outputs:
+      runtime:
+        description: Whether this run includes application or operational changes
+        value: ${{ jobs.changes.outputs.runtime }}
+permissions:
+  contents: read
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      runtime: ${{ steps.changes.outputs.runtime }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Classify the full change range
+        id: changes
+        run: python3 scripts/ci.py changes
+      - name: Validate documentation and CI/release tooling
+        run: |
+          bash -n scripts/build-image.sh scripts/compose-production.sh
+          python3 scripts/ci.py docs
+          python3 -B -m unittest discover -s scripts -p 'test_*.py'
+
+  test:
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: labturn-tests-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: labqueue
+          POSTGRES_PASSWORD: labqueue
+          POSTGRES_DB: labqueue
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U labqueue"
+          --health-interval 5s --health-timeout 3s --health-retries 15
+    env:
+      DATABASE_URL: postgres://labqueue:labqueue@localhost:5432/labqueue?sslmode=disable
+      TEST_DATABASE_URL: postgres://labqueue:labqueue@localhost:5432/labqueue?sslmode=disable
+      ROOT_TELEGRAM_IDS: "1001"
+      DEV_AUTH: "true"
+      BOT_TOKEN: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Prepare Go and frontend in parallel (timed stages)
+        run: python3 scripts/prepare-ci.py
+      - name: Start an isolated local app and seed demo data
+        run: |
+          WEB_DIST=web/dist ./labturn > /tmp/labturn.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://localhost:8080/api/health && break || sleep 1; done
+          python3 scripts/seed-demo.py
+      - name: Browser tests
+        run: npm test
+        working-directory: web
+
+  image:
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: labturn-image-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      IMAGE: labturn-app:gh-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+      DOCKER_BUILD_RECORD_UPLOAD: "false"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the single linux/amd64 image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          provenance: false
+          tags: ${{ env.IMAGE }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/Awak3r/it_proj
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=gh-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+            ru.awak3r.labturn.source-state=clean
+          cache-from: type=gha,scope=labturn-amd64
+          cache-to: type=gha,scope=labturn-amd64,mode=max
+      - name: Export the exact image for deployment
+        if: inputs.release
+        run: |
+          set -euo pipefail
+          docker image save "$IMAGE" | gzip -1 > image.tar.gz
+          sha256sum image.tar.gz > image.tar.gz.sha256
+      - uses: actions/upload-artifact@v4
+        if: inputs.release
+        with:
+          name: labturn-image-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            image.tar.gz
+            image.tar.gz.sha256
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: error

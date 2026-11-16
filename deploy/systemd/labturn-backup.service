@@ -1,0 +1,17 @@
+[Unit]
+Description=LabTurn private PostgreSQL backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+WorkingDirectory=/home/ubuntu/labturn/source
+ExecStart=/usr/local/sbin/labturn-backup
+TimeoutStartSec=15min
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+PrivateTmp=true
+NoNewPrivileges=true

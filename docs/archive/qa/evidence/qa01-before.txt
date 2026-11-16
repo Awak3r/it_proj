@@ -1,0 +1,41 @@
+
+> labqueue@0.1.0 test
+> playwright test --grep stale snapshot
+
+
+Running 1 test using 1 worker
+
+(node:13393) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/recovery.spec.ts:10:1 › stale snapshot cannot roll back a saved grade (5.5s)
+
+
+  1) tests/recovery.spec.ts:10:1 › stale snapshot cannot roll back a saved grade ───────────────────
+
+    Error: expect(locator).toHaveValue(expected) failed
+
+    Locator:  getByLabel('Анна Морозова, ЛР 2')
+    Expected: "5"
+    Received: ""
+    Timeout:  1000ms
+
+    Call log:
+      - Expect "toHaveValue" getByLabel('Анна Морозова, ЛР 2') with timeout 1000ms
+      - waiting for getByLabel('Анна Морозова, ЛР 2')
+        11 × locator resolved to <select class="grade grade-empty" aria-label="Анна Морозова, ЛР 2">…</select>
+           - unexpected value ""
+
+
+      30 |     await cell.selectOption(value);
+      31 |     expect((await saved).ok()).toBeTruthy();
+    > 32 |     await expect(cell).toHaveValue(value, { timeout: 1000 });
+         |                        ^
+      33 |     await expect(cell).toBeEnabled({ timeout: 1000 });
+      34 |     const late = page.waitForResponse((r) => r.url().endsWith("/api/state"));
+      35 |     release();
+        at /workspace/it_proj/web/tests/recovery.spec.ts:32:24
+
+    Error Context: test-results/recovery-stale-snapshot-cannot-roll-back-a-saved-grade/error-context.md
+
+  1 failed
+    tests/recovery.spec.ts:10:1 › stale snapshot cannot roll back a saved grade ────────────────────

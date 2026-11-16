@@ -1,0 +1,6 @@
+=== RUN   TestIntegration
+=== RUN   TestIntegration/concurrent_grade_conflict_and_durable_replay
+--- PASS: TestIntegration (1.52s)
+    --- PASS: TestIntegration/concurrent_grade_conflict_and_durable_replay (0.08s)
+PASS
+ok  	it_proj	2.662s

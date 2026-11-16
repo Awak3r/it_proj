@@ -1,0 +1,61 @@
+declare global {
+  interface Window {
+    Telegram?: {
+      WebApp: {
+        initData: string;
+        ready: () => void;
+        expand: () => void;
+        isActive?: boolean;
+        onEvent?: (name: string, callback: () => void) => void;
+        offEvent?: (name: string, callback: () => void) => void;
+        requestWriteAccess?: (callback: (granted: boolean) => void) => void;
+      };
+    };
+  }
+}
+export function devUser() {
+  return localStorage.getItem("dev-user") || "1001";
+}
+export function authHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    Authorization: "tma " + (window.Telegram?.WebApp.initData || ""),
+  };
+  if (localStorage.getItem("dev-enabled") === "true")
+    headers["X-Dev-User"] = devUser();
+  return headers;
+}
+export async function request<T>(
+  path: string,
+  body?: unknown,
+  key?: string,
+): Promise<T> {
+  const headers = authHeaders();
+  if (body) {
+    headers["Content-Type"] = "application/json";
+    headers["Idempotency-Key"] = key || crypto.randomUUID();
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch("/api/" + path, {
+      method: body ? "POST" : "GET",
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+    const data = await response.json();
+    if (!response.ok)
+      throw new Error(data.error || "Не удалось связаться с сервером");
+    return data;
+  } catch (error) {
+    if (controller.signal.aborted)
+      throw new Error(
+        body
+          ? "Сервер не ответил вовремя. Результат команды неизвестен. Повторите действие: повтор защищён от дублирования."
+          : "Сервер не ответил вовремя. Повторите обновление.",
+      );
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}

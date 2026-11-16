@@ -1,0 +1,15 @@
+.env
+.local/
+web/node_modules/
+web/dist/
+*.log
+coverage.out
+web/test-results/
+web/playwright-report/
+*.tsbuildinfo
+backend/labqueue
+backend/it_proj
+/labturn
+backups/
+__pycache__/
+*.py[cod]
