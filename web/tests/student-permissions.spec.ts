@@ -59,7 +59,10 @@ async function open(page: Page, state: State) {
     return route.abort();
   });
   await page.goto("/");
-  await page.getByRole("button", { name: state.me.teacher ? "Я преподаватель" : "Я студент", exact: true }).click();
+  if (state.me.root)
+    await page.getByRole("button", { name: state.me.teacher ? "Я преподаватель" : "Я студент", exact: true }).click();
+  else
+    await expect(page.getByRole("button", { name: /^(Сменить роль|Я студент|Я преподаватель|Управление root →)$/ })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "События", exact: true })).toBeVisible();
   return commands;
 }
@@ -103,10 +106,10 @@ for (const privilege of ["student", "root"] as const) {
 for (const privilege of ["student", "teacher", "root"] as const) {
   test(`audit is root-only and participation history remains available for ${privilege} account`, async ({ page }) => {
     await open(page, snapshot(privilege));
-    if (privilege !== "student") {
+    if (privilege === "root") {
       await page.getByRole("button", { name: "Сменить роль" }).click();
       await page.getByRole("button", {
-        name: privilege === "root" ? "Управление root →" : "Я преподаватель",
+        name: "Управление root →",
         exact: true,
       }).click();
     }
@@ -135,8 +138,6 @@ test("teacher can use every bound group and subject without assignments", async 
   state.users.push({ id: 4001, name: "Other group student", group_id: 2, teacher: false });
   state.labs.push({ ...state.labs[0], id: 2, group_id: 2, subject_id: 2, name: "Other lab" });
   await open(page, state);
-  await page.getByRole("button", { name: "Сменить роль" }).click();
-  await page.getByRole("button", { name: "Я преподаватель", exact: true }).click();
   await page.getByRole("button", { name: "Создать событие" }).click();
   const eventForm = page.getByRole("dialog");
   await expect(eventForm.getByLabel("Предмет").getByRole("option")).toHaveText(["Test subject", "Other subject"]);
@@ -243,8 +244,6 @@ for (const teacherFlag of [false, true]) {
 test("revoking teacher privileges closes an already-open teacher form", async ({ page }) => {
   const state = snapshot("teacher");
   const commands = await open(page, state);
-  await page.getByRole("button", { name: "Сменить роль" }).click();
-  await page.getByRole("button", { name: "Я преподаватель", exact: true }).click();
   await page.locator("nav").getByRole("button", { name: "Ведомость", exact: true }).click();
   await page.getByRole("button", { name: "Добавить работу" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
@@ -252,17 +251,21 @@ test("revoking teacher privileges closes an already-open teacher form", async ({
   const refreshed = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/state");
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await refreshed;
-  await expect(page.getByText("Роль преподавателя выдаёт root.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Профиль", exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Ваша группа" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^(Назад|Сменить роль|Я студент|Я преподаватель)$/ })).toHaveCount(0);
+  await expect(page.locator("nav")).toHaveCount(0);
   await expectNoPrivilegedControls(page);
   expect(commands).toEqual([]);
 });
 
-test("ordinary student cannot enter teacher or root management by switching role", async ({ page }) => {
-  await open(page, snapshot("student"));
-  await page.getByRole("button", { name: "Сменить роль" }).click();
-  await expect(page.getByRole("button", { name: "Управление root →" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Я преподаватель", exact: true }).click();
-  await expect(page.getByText("Роль преподавателя выдаёт root.", { exact: false })).toBeVisible();
-  await expect(page.locator("nav")).toHaveCount(0);
+test("ordinary student has no role selector or teacher and root management controls", async ({ page }) => {
+  const commands = await open(page, snapshot("student"));
+  await expect(page.getByRole("button", { name: /^(Сменить роль|Я студент|Я преподаватель|Управление root →)$/ })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Вход", exact: true })).toHaveCount(0);
   await expectNoPrivilegedControls(page);
+  await page.locator("nav").getByRole("button", { name: "Ведомость", exact: true }).click();
+  await expect(page.getByRole("table")).toBeVisible();
+  await expectNoPrivilegedControls(page);
+  expect(commands).toEqual([]);
 });

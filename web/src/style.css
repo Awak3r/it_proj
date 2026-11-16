@@ -437,6 +437,13 @@ nav button svg {
 .actions button {
   font-size: 12px;
 }
+.directory-pagination {
+  justify-content: center;
+  align-items: center;
+}
+.directory-pagination > span {
+  white-space: nowrap;
+}
 .secondary {
   background: var(--bg);
   border: 1px solid var(--line);

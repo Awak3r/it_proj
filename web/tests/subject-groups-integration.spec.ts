@@ -138,7 +138,6 @@ test("curriculum API/UI: subject checkboxes, preserve edits, unlink errors, depe
     );
     await page.evaluate(() => localStorage.setItem("dev-user", "2001"));
     await page.reload();
-    await page.getByRole("button", { name: /Я преподаватель/ }).click();
     await page
       .locator("nav")
       .getByRole("button", { name: "Ведомость", exact: true })
@@ -183,7 +182,6 @@ test("curriculum API/UI: subject checkboxes, preserve edits, unlink errors, depe
     )!;
     subjectIDs.push(other.id);
     await page.reload();
-    await page.getByRole("button", { name: /Я преподаватель/ }).click();
     await page
       .getByRole("button", { name: "Создать событие", exact: true })
       .click();
@@ -226,7 +224,6 @@ test("curriculum API/UI: subject checkboxes, preserve edits, unlink errors, depe
       student,
     );
     await page.reload();
-    await page.getByRole("button", { name: "Я студент", exact: true }).click();
     await page
       .locator("nav")
       .getByRole("button", { name: "Ведомость", exact: true })

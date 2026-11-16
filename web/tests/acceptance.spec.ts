@@ -182,9 +182,6 @@ async function openApp(page: Page, state: State, rejectGrade = false) {
   });
   await page.addInitScript(() => localStorage.setItem("dev-user", "2001"));
   await page.goto("/");
-  await page
-    .getByRole("button", { name: "Я преподаватель", exact: true })
-    .click();
   await expect(page.locator("nav")).toBeVisible();
   return { commands, releaseGrade };
 }

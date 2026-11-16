@@ -75,7 +75,13 @@ function App() {
   const [exporting, setExporting] = useState(false);
   const [showStatistics, setShowStatistics] = useState(false);
   const [dev, setDev] = useState(false);
-  const [role, setRole] = useState("");
+  const [selectedRole, setRole] = useState("");
+  const role =
+    data && !data.me.root
+      ? data.me.teacher
+        ? "teacher"
+        : "student"
+      : selectedRole;
   const [tab, setTab] = useState("events");
   const [eventID, setEventID] = useState<number>();
   const [modal, setModal] = useState<Modal>();
@@ -229,7 +235,7 @@ function App() {
     }
   }
   function changeRole(next: string) {
-    if (next === "student" && data?.me.teacher) return;
+    if (!data?.me.root || (next === "student" && data.me.teacher)) return;
     setRole(next);
     setShowStatistics(false);
     setTab("events");
@@ -754,7 +760,7 @@ function App() {
                 save={async (name, group_id) => {
                   await command({ kind: "profile", name, group_id });
                 }}
-                back={() => changeRole("")}
+                back={data.me.root ? () => changeRole("") : undefined}
               />
             )}
           </section>
@@ -781,9 +787,14 @@ function App() {
                   <Settings2 size={17} />
                   <span>{me.name}</span>
                 </button>
-                <button className="switch-role" onClick={() => changeRole("")}>
-                  Сменить роль
-                </button>
+                {data.me.root && (
+                  <button
+                    className="switch-role"
+                    onClick={() => changeRole("")}
+                  >
+                    Сменить роль
+                  </button>
+                )}
               </div>
             </div>
             <nav>
@@ -1667,7 +1678,7 @@ function Profile({
   groups: State["groups"];
   role: string;
   save: (n: string, g: number) => Promise<void>;
-  back: () => void;
+  back?: () => void;
 }) {
   const [n, setN] = useState(me.name);
   const [g, setG] = useState(me.group_id || 0);
@@ -1728,9 +1739,11 @@ function Profile({
       >
         Продолжить <ArrowRight size={18} />
       </button>
-      <button type="button" className="link" onClick={back}>
-        Назад
-      </button>
+      {back && (
+        <button type="button" className="link" onClick={back}>
+          Назад
+        </button>
+      )}
     </form>
   );
 }

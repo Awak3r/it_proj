@@ -76,16 +76,18 @@ async function open(page: Page, state: State, mode = "root", reject = false) {
     return route.abort();
   });
   await page.goto("/");
-  await page
-    .getByRole("button", {
-      name:
-        mode === "root"
-          ? /Управление root/
-          : mode === "teacher"
-            ? /Я преподаватель/
-            : "Я студент",
-    })
-    .click();
+  if (state.me.root) {
+    await page
+      .getByRole("button", {
+        name:
+          mode === "root"
+            ? /Управление root/
+            : mode === "teacher"
+              ? /Я преподаватель/
+              : "Я студент",
+      })
+      .click();
+  }
   return commands;
 }
 async function grades(page: Page) {

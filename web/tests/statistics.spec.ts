@@ -253,12 +253,14 @@ async function openSynthetic(
     state.me.id,
   );
   await page.goto("/");
-  await page
-    .getByRole("button", {
-      name: studentMode ? "Я студент" : "Я преподаватель",
-      exact: true,
-    })
-    .click();
+  if (state.me.root) {
+    await page
+      .getByRole("button", {
+        name: studentMode ? "Я студент" : "Я преподаватель",
+        exact: true,
+      })
+      .click();
+  }
   await page
     .locator("nav")
     .getByRole("button", { name: "Ведомость", exact: true })

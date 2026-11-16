@@ -69,7 +69,6 @@ async function openQueue(page: Page, state: State) {
   });
   await page.addInitScript(() => localStorage.setItem("dev-user", "3003"));
   await page.goto("/");
-  await page.getByRole("button", { name: "Я студент", exact: false }).click();
   await page
     .getByRole("button")
     .filter({

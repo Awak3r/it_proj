@@ -49,7 +49,12 @@ async function openProfile(page: Page, state: State) {
     state.me.id,
   );
   await page.goto("/");
-  await page.getByRole("button", { name: "Я студент", exact: true }).click();
+  if (state.me.root)
+    await page.getByRole("button", { name: "Я студент", exact: true }).click();
+  else {
+    await expect(page.getByRole("heading", { name: "Профиль", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^(Назад|Я студент|Я преподаватель|Сменить роль)$/ })).toHaveCount(0);
+  }
   return commands;
 }
 
@@ -76,10 +81,9 @@ for (const archivedOnly of [false, true]) {
     ).toBeDisabled();
     await page.getByLabel("Имя и фамилия").press("Enter");
     expect(commands).toHaveLength(0);
-    await page.getByRole("button", { name: "Назад", exact: true }).click();
     await expect(
-      page.getByRole("button", { name: "Я студент", exact: true }),
-    ).toBeVisible();
+      page.getByRole("button", { name: /^(Назад|Я студент|Я преподаватель)$/ }),
+    ).toHaveCount(0);
   });
 }
 

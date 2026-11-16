@@ -69,12 +69,7 @@ async function open(page: Page, state: State) {
     state.me.id,
   );
   await page.goto("/");
-  await page
-    .getByRole("button", {
-      name: state.me.teacher ? "Я преподаватель" : "Я студент",
-      exact: true,
-    })
-    .click();
+  await expect(page.locator("nav")).toBeVisible();
   if (["completed", "cancelled"].includes(state.events[0].state))
     await page
       .getByRole("button", { name: "Все события", exact: true })

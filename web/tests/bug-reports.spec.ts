@@ -114,10 +114,15 @@ async function open(
     state.me.id,
   );
   await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "Вход", exact: true }),
-  ).toBeVisible();
-  if (mode) {
+  if (state.me.root) {
+    await expect(
+      page.getByRole("heading", { name: "Вход", exact: true }),
+    ).toBeVisible();
+  } else {
+    await expect(page.locator("nav")).toBeVisible();
+    await expect(page.getByRole("button", { name: /^(Я студент|Я преподаватель|Сменить роль|Управление root →)$/ })).toHaveCount(0);
+  }
+  if (mode && state.me.root) {
     await page
       .getByRole("button", {
         name:
@@ -147,7 +152,7 @@ async function event(page: Page, name: string) {
 }
 
 for (const root of [false, true]) {
-  test(`teacher role screen excludes student even when root=${root}`, async ({
+  test(`teacher entry excludes student and only root sees role choices (root=${root})`, async ({
     page,
   }) => {
     const state = snapshot("teacher");
@@ -158,7 +163,9 @@ for (const root of [false, true]) {
     ).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "Я преподаватель", exact: true }),
-    ).toBeVisible();
+    ).toHaveCount(root ? 1 : 0);
+    if (!root)
+      await expect(page.getByRole("button", { name: "Создать событие", exact: true })).toBeEnabled();
     await expect(
       page.getByRole("button", { name: "Управление root →", exact: true }),
     ).toHaveCount(root ? 1 : 0);

@@ -4,9 +4,6 @@ import { State } from "../src/types";
 async function openGradebook(page: Page) {
   await page.addInitScript(() => localStorage.setItem("dev-user", "2001"));
   await page.goto("/");
-  await page
-    .getByRole("button", { name: "Я преподаватель", exact: false })
-    .click();
   await page.getByRole("button", { name: "Ведомость", exact: true }).click();
   await page.getByRole("combobox", { name: /^Предмет/ }).selectOption("1");
   return page.getByLabel("Анна Морозова, ЛР 2");

@@ -234,9 +234,6 @@ async function open(page: Page, commandMode: CommandMode = "normal") {
   );
   await page.goto("/");
   await page
-    .getByRole("button", { name: "Я преподаватель", exact: true })
-    .click();
-  await page
     .getByRole("button")
     .filter({
       has: page.getByRole("heading", {

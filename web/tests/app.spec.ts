@@ -2,7 +2,9 @@ import { test, expect, Page } from "@playwright/test";
 async function login(page: Page, id: string, role: string) {
   await page.addInitScript((id) => localStorage.setItem("dev-user", id), id);
   await page.goto("/");
-  await page.getByRole("button", { name: role, exact: false }).click();
+  if (id === "1001")
+    await page.getByRole("button", { name: role, exact: false }).click();
+  await expect(page.locator("nav")).toBeVisible();
 }
 test("student desktop navigation and grade permissions", async ({ page }) => {
   const errors: string[] = [];
@@ -54,8 +56,8 @@ test("student mobile has no horizontal page overflow", async ({ page }) => {
       : "test-results/mobile.png",
     fullPage: true,
   });
-  await page.getByRole("button", { name: "Сменить роль", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Вход" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Сменить роль", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Вход" })).toHaveCount(0);
 });
 async function api(page: Page, user: number, data: Record<string, unknown>) {
   const response = await page.request.post("/api/command", {
@@ -130,11 +132,9 @@ test("teacher grade autosave keeps student in queue and finish is separate", asy
     action: "complete",
   });
 });
-test("student cannot select teacher to gain privileges", async ({ page }) => {
-  await login(page, "3001", "Я преподаватель");
-  await expect(
-    page.getByText("Роль преподавателя выдаёт root.", { exact: false }),
-  ).toBeVisible();
+test("student automatically enters student view without a privileged role selector", async ({ page }) => {
+  await login(page, "3001", "Я студент");
+  await expect(page.getByRole("button", { name: /^(Сменить роль|Я студент|Я преподаватель|Управление root →|Управление)$/ })).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Создать событие" }),
   ).toHaveCount(0);

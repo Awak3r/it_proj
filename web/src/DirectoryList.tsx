@@ -53,7 +53,10 @@ export function DirectoryList<T>({
         .map(renderItem)}
       {!filtered.length && <p>{emptyMessage}</p>}
       {pages > 1 && (
-        <div className="actions" aria-label={`${label}: страницы`}>
+        <div
+          className="actions directory-pagination"
+          aria-label={`${label}: страницы`}
+        >
           <button
             className="secondary"
             disabled={currentPage === 0}

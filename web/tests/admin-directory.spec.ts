@@ -159,6 +159,85 @@ function panel(page: Page, title: string) {
     .filter({ has: page.getByRole("heading", { name: title, exact: true }) });
 }
 
+for (const width of [320, 390, 1440]) {
+  test(`all five paginators center their rows and align text with buttons at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await open(page);
+    await expect(page.locator(".directory-pagination")).toHaveCount(5);
+    for (const [title, label] of blocks) {
+      const block = panel(page, title);
+      await expect(block.locator(".admin-row")).toHaveCount(5);
+      const pagination = block.getByLabel(`${label}: страницы`, {
+        exact: true,
+      });
+      await pagination.scrollIntoViewIfNeeded();
+      const geometry = await pagination.evaluate((element) => {
+        const panel = element.closest(".panel")!;
+        const bounds = panel.getBoundingClientRect();
+        const style = getComputedStyle(panel);
+        const left =
+          bounds.left +
+          parseFloat(style.borderLeftWidth) +
+          parseFloat(style.paddingLeft);
+        const right =
+          bounds.right -
+          parseFloat(style.borderRightWidth) -
+          parseFloat(style.paddingRight);
+        const children = Array.from(element.children).map((child) => {
+          const rect = child.getBoundingClientRect();
+          return {
+            left: rect.left,
+            right: rect.right,
+            top: rect.top,
+            bottom: rect.bottom,
+            centerY: (rect.top + rect.bottom) / 2,
+          };
+        });
+        const rows: (typeof children)[] = [];
+        for (const child of children) {
+          const row = rows.find((row) =>
+            row.some(
+              (item) =>
+                Math.min(item.bottom, child.bottom) >
+                Math.max(item.top, child.top),
+            ),
+          );
+          if (row) row.push(child);
+          else rows.push([child]);
+        }
+        return { left, right, rows };
+      });
+      if (width !== 320) expect(geometry.rows, title).toHaveLength(1);
+      for (const row of geometry.rows) {
+        const left = Math.min(...row.map((item) => item.left));
+        const right = Math.max(...row.map((item) => item.right));
+        expect(
+          Math.abs((left + right) / 2 - (geometry.left + geometry.right) / 2),
+          `${title}: centered line`,
+        ).toBeLessThanOrEqual(1);
+        expect(left, `${title}: no left overflow`).toBeGreaterThanOrEqual(
+          geometry.left - 1,
+        );
+        expect(right, `${title}: no right overflow`).toBeLessThanOrEqual(
+          geometry.right + 1,
+        );
+        expect(
+          Math.max(...row.map((item) => item.centerY)) -
+            Math.min(...row.map((item) => item.centerY)),
+          `${title}: vertically centered text and buttons`,
+        ).toBeLessThanOrEqual(1);
+      }
+    }
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  });
+}
+
 for (const width of [390, 1440]) {
   test(`all five directories paginate at five rows independently at ${width}px`, async ({
     page,
