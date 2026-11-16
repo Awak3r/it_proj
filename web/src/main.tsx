@@ -70,6 +70,7 @@ function App() {
   const [connectionError, setConnectionError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [showStatistics, setShowStatistics] = useState(false);
   const [dev, setDev] = useState(false);
@@ -202,11 +203,27 @@ function App() {
     const key = commandKeys.current.get(body) || crypto.randomUUID();
     commandKeys.current.set(body, key);
     setBusy(true);
+    setSyncing(false);
+    let refreshTimeout: ReturnType<typeof setTimeout> | undefined;
     try {
       await request("command", c, key);
       commandKeys.current.delete(body);
-      await refresh(true);
+      setSyncing(true);
+      // SSE can supersede snapshots repeatedly. Bound the whole confirmation,
+      // not only each individual fetch, without accepting an older snapshot.
+      const confirmed = await Promise.race([
+        refresh(true),
+        new Promise<boolean>((resolve) => {
+          refreshTimeout = setTimeout(() => resolve(false), 15000);
+        }),
+      ]);
+      if (!confirmed)
+        throw new Error(
+          "Изменение сохранено, но данные не обновились. Повторите обновление.",
+        );
     } finally {
+      clearTimeout(refreshTimeout);
+      setSyncing(false);
       setBusy(false);
     }
   }
@@ -220,6 +237,7 @@ function App() {
     setError("");
   }
   async function action(c: Cmd, message = "Готово") {
+    setError("");
     try {
       await command(c);
       setNotice(message);
@@ -1199,7 +1217,10 @@ function App() {
                           </thead>
                           <tbody>
                             {data.users
-                              .filter((u) => !u.teacher && u.group_id === currentGroup)
+                              .filter(
+                                (u) =>
+                                  !u.teacher && u.group_id === currentGroup,
+                              )
                               .map((u) => {
                                 const labs = data.labs.filter(
                                   (l) =>
@@ -1589,7 +1610,8 @@ function App() {
       )}
       {busy && (
         <div className="busy">
-          <LoaderCircle className="spin" size={16} /> Сохраняем…
+          <LoaderCircle className="spin" size={16} />{" "}
+          {syncing ? "Обновляем…" : "Сохраняем…"}
         </div>
       )}
     </>

@@ -296,9 +296,13 @@ func sortEntries(items []entry, strategy string) {
 	})
 }
 func (s *server) nearNotifications(ctx context.Context, tx pgx.Tx) error {
+	// A committed outbox identity remains present during delivery/retries. Skip it
+	// before the unique check, which can wait on a concurrent delivery UPDATE.
+	// ON CONFLICT still protects against concurrent inserts of a new identity.
 	_, e := tx.Exec(ctx, `INSERT INTO notifications(recipient,entry_id,event_id,kind,message)
  SELECT q.user_id,q.id,q.event_id,'near','Скоро ваша очередь: '||e.name||'. Перед вами не больше двух человек.'
  FROM (SELECT *, row_number() OVER(PARTITION BY event_id ORDER BY CASE WHEN state='called' THEN 0 ELSE 1 END,position,id) AS n FROM entries WHERE state IN ('waiting','called')) q
- JOIN events e ON e.id=q.event_id WHERE q.state='waiting' AND q.n<=3 AND e.state='live' AND (e.strategy<>'random' OR e.shuffled) ON CONFLICT DO NOTHING`)
+ JOIN events e ON e.id=q.event_id WHERE q.state='waiting' AND q.n<=3 AND e.state='live' AND (e.strategy<>'random' OR e.shuffled)
+  AND NOT EXISTS(SELECT 1 FROM notifications n WHERE n.entry_id=q.id AND n.kind='near') ON CONFLICT DO NOTHING`)
 	return e
 }

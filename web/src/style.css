@@ -1046,9 +1046,11 @@ input[type="number"] {
     font-size: 21px;
   }
   .queue-position p {
+    font-size: 11px;
+  }
+  .queue-position p:not(#join-reason) {
     grid-column: 1/3;
     grid-row: 2;
-    font-size: 11px;
   }
   .queue-position button {
     grid-column: 3;
