@@ -26,6 +26,34 @@ export type GradeSummary = {
   required_total: number;
   required_passed: number;
 };
+export type GradeStatistics = {
+  subject_id: number;
+  group_id: number;
+  students_count: number;
+  labs_count: number;
+  required_labs_count: number;
+  debtors_count: number;
+  final_ready_count: number;
+  average: number | null;
+  distribution: {
+    missing: number;
+    "2": number;
+    "3": number;
+    "4": number;
+    "5": number;
+  };
+};
+export type LabStatistics = {
+  lab_id: number;
+  subject_id: number;
+  group_id: number;
+  students_count: number;
+  graded_count: number;
+  passed_count: number;
+  missing_count: number;
+  failed_count: number;
+  average: number | null;
+};
 export type Grade = {
   student_id: number;
   lab_id: number;
@@ -77,6 +105,8 @@ export type State = {
   labs: Lab[];
   grades: Grade[];
   grade_summaries: GradeSummary[];
+  grade_statistics?: GradeStatistics[];
+  lab_statistics?: LabStatistics[];
   events: Event[];
   entries: Entry[];
   assignments: Assignment[];

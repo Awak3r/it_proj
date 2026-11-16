@@ -1,0 +1,147 @@
+.grade-statistics {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+  color: var(--text);
+}
+.grade-statistics section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.grade-statistics h3,
+.grade-statistics th,
+.grade-statistics p {
+  overflow-wrap: anywhere;
+}
+.grade-statistics .statistics-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.grade-statistics .statistics-cards > div {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.grade-statistics dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+.grade-statistics dd {
+  margin: 5px 0 0;
+  font-size: 23px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.grade-statistics dd small {
+  display: block;
+  font-weight: 400;
+}
+.grade-statistics .statistics-distribution,
+.grade-statistics .statistics-labs {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+.grade-statistics .statistics-distribution li {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) minmax(24px, auto);
+  gap: 10px;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+.grade-statistics .statistics-track {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.grade-statistics .statistics-track > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.grade-statistics .statistics-missing {
+  padding: 10px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+}
+.grade-statistics .statistics-labs li {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.grade-statistics .statistics-lab-result {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-variant-numeric: tabular-nums;
+}
+.grade-statistics .statistics-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.grade-statistics .statistics-filters label {
+  flex: 1 1 180px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.grade-statistics .statistics-filters input,
+.grade-statistics .statistics-filters select {
+  min-height: 44px;
+  margin-top: 5px;
+}
+.grade-statistics .statistics-table-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.grade-statistics .statistics-table-scroll:focus-visible,
+.grade-statistics input:focus-visible,
+.grade-statistics select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.grade-statistics table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.grade-statistics caption {
+  text-align: left;
+  padding: 10px;
+  color: var(--muted);
+}
+.grade-statistics th,
+.grade-statistics td {
+  padding: 10px;
+  text-align: left;
+  white-space: normal;
+  border-bottom: 1px solid var(--line);
+}
+.grade-statistics th[scope="row"] {
+  max-width: 230px;
+  font-weight: 500;
+  background: var(--bg);
+  color: var(--text);
+}
+@media (max-width: 380px) {
+  .grade-statistics .statistics-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

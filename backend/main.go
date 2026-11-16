@@ -212,6 +212,13 @@ func (s *server) state(w http.ResponseWriter, r *http.Request, uid int64) {
 		}
 		result[key] = v
 	}
+	boards, labs, e := readStatistics(ctx, tx, uid, s.roots[uid])
+	if e != nil {
+		writeError(w, e)
+		return
+	}
+	result["grade_statistics"] = boards
+	result["lab_statistics"] = labs
 	if e = tx.Commit(ctx); e != nil {
 		writeError(w, e)
 		return

@@ -9,7 +9,7 @@ const visibleLab = `($2 OR
 
 // DIV computes positive half-up rounding directly from the exact ratio, without
 // an intermediate rounded quotient (including at the two-decimal boundary).
-const gradeSummariesSQL = `WITH totals AS (
+const gradingCTE = `WITH totals AS (
     SELECT u.id AS student_id,l.subject_id,l.group_id,
         SUM(l.weight * COALESCE(g.value,2)) FILTER (WHERE l.required OR g.value IS NOT NULL) AS numerator,
         SUM(l.weight) FILTER (WHERE l.required OR g.value IS NOT NULL) AS denominator,
@@ -20,10 +20,14 @@ const gradeSummariesSQL = `WITH totals AS (
     LEFT JOIN grades g ON g.lab_id=l.id AND g.student_id=u.id
     WHERE NOT l.archived AND ` + visibleLab + `
     GROUP BY u.id,l.subject_id,l.group_id
-)
-SELECT student_id,subject_id,group_id,
+), summaries AS (
+SELECT totals.*,
     DIV(200*numerator+denominator,2*NULLIF(denominator,0))*0.01 AS average,
     CASE WHEN required_total=required_passed AND denominator>0
-        THEN DIV(2*numerator+denominator,2*denominator)::int END AS final_hint,
-    required_total,required_passed
-FROM totals ORDER BY group_id,subject_id,student_id`
+        THEN DIV(2*numerator+denominator,2*denominator)::int END AS final_hint
+FROM totals
+)`
+
+const gradeSummariesSQL = gradingCTE + `
+SELECT student_id,subject_id,group_id,average,final_hint,required_total,required_passed
+FROM summaries ORDER BY group_id,subject_id,student_id`

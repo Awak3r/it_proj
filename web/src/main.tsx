@@ -23,6 +23,7 @@ import {
   Bell,
   RefreshCw,
   Download,
+  BarChart3,
 } from "lucide-react";
 import { request, devUser, authHeaders } from "./api";
 import { State, Event, Entry, Lab, strategies, statuses } from "./types";
@@ -30,6 +31,7 @@ import "./style.css";
 import { useTelegramTheme } from "./theme";
 import { startLiveUpdates } from "./live";
 import { GradeSummaryCells } from "./GradeSummaryCells";
+import { GradeStatisticsPanel } from "./GradeStatisticsPanel";
 type Cmd = Record<string, unknown>;
 type Field = {
   name: string;
@@ -65,6 +67,7 @@ function App() {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [showStatistics, setShowStatistics] = useState(false);
   const [dev, setDev] = useState(false);
   const [role, setRole] = useState("");
   const [tab, setTab] = useState("events");
@@ -149,6 +152,7 @@ function App() {
     setModal(undefined);
     setEventID(undefined);
     setTab("events");
+    setShowStatistics(false);
   }, [data?.me.teacher, data?.me.root]);
   useEffect(() => {
     if (notice) {
@@ -171,6 +175,7 @@ function App() {
   }
   function changeRole(next: string) {
     setRole(next);
+    setShowStatistics(false);
     setTab("events");
     setEventID(undefined);
     setModal(undefined);
@@ -440,6 +445,31 @@ function App() {
       gradeLocks.current.delete(cell);
     }
   }
+  async function cancelGrade(cell: string) {
+    const entry = pending[cell];
+    if (!entry || gradeLocks.current.has(cell)) return;
+    gradeLocks.current.add(cell);
+    setPending((p) => ({ ...p, [cell]: { ...entry, error: "" } }));
+    try {
+      // The previous write may have committed even when its response was lost.
+      if (!(await refresh(true)))
+        throw new Error(
+          "Не удалось обновить ведомость. Повторите отмену правки.",
+        );
+      setPending((p) => {
+        const next = { ...p };
+        delete next[cell];
+        return next;
+      });
+    } catch (e) {
+      setPending((p) => ({
+        ...p,
+        [cell]: { ...entry, error: (e as Error).message },
+      }));
+    } finally {
+      gradeLocks.current.delete(cell);
+    }
+  }
   async function exportGradebook() {
     if (!currentSubject || !currentGroup) return;
     setExporting(true);
@@ -450,9 +480,7 @@ function App() {
       );
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(
-          data.error || "Не удалось выгрузить ведомость",
-        );
+        throw new Error(data.error || "Не удалось выгрузить ведомость");
       }
       setNotice("Ведомость отправлена в личный чат с ботом");
     } catch (e) {
@@ -461,7 +489,9 @@ function App() {
       setExporting(false);
     }
   }
-  const accessibleGroups = groups.filter((g) => teacher || g.id === me.group_id);
+  const accessibleGroups = groups.filter(
+    (g) => teacher || g.id === me.group_id,
+  );
   const currentGroup = group || me.group_id || accessibleGroups[0]?.id || 0;
   const currentSubject = subject || subjects[0]?.id || 0;
   const canGrade = teacher;
@@ -801,7 +831,23 @@ function App() {
                       <h1>Ведомость</h1>
                     </div>
                     {canGrade && (
-                      <div style={{ display: "flex", gap: 8 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          flexWrap: "wrap",
+                          justifyContent: "flex-end",
+                        }}
+                      >
+                        <button
+                          className="secondary"
+                          disabled={!currentGroup || !currentSubject}
+                          aria-pressed={showStatistics}
+                          onClick={() => setShowStatistics((value) => !value)}
+                        >
+                          <BarChart3 size={18} />{" "}
+                          {showStatistics ? "К оценкам" : "Статистика"}
+                        </button>
                         <button
                           disabled={!currentGroup || !currentSubject}
                           onClick={() => labForm()}
@@ -824,6 +870,7 @@ function App() {
                     <label>
                       Группа
                       <select
+                        aria-label="Группа"
                         value={currentGroup}
                         onChange={(e) => setGroup(Number(e.target.value))}
                       >
@@ -837,6 +884,7 @@ function App() {
                     <label>
                       Предмет
                       <select
+                        aria-label="Предмет"
                         value={currentSubject}
                         onChange={(e) => setSubject(Number(e.target.value))}
                       >
@@ -853,198 +901,231 @@ function App() {
                         : "Сохранено"}
                     </span>
                   </div>
-                  <div className="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Студент</th>
-                          {data.labs
-                            .filter(
-                              (l) =>
-                                l.group_id === currentGroup &&
-                                l.subject_id === currentSubject &&
-                                !l.archived,
-                            )
-                            .map((l) => (
-                              <th key={l.id}>
-                                <button
-                                  className="lab-heading"
-                                  title={l.name}
-                                  disabled={!canGrade}
-                                  onClick={() => labForm(l)}
-                                >
-                                  ЛР {l.number}
-                                  <small>{l.name}</small>
-                                  <small className="lab-policy">
-                                    Вес: {l.weight_text ?? l.weight ?? 1} ·{" "}
-                                    {l.required === false
-                                      ? "необязательная"
-                                      : "обязательная"}
-                                  </small>
-                                </button>
-                              </th>
-                            ))}
-                          <th>Прогресс</th>
-                          <th>Средний балл</th>
-                          <th>Итог (подсказка)</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.users
-                          .filter((u) => u.group_id === currentGroup)
-                          .map((u) => {
-                            const labs = data.labs.filter(
-                              (l) =>
-                                l.group_id === currentGroup &&
-                                l.subject_id === currentSubject &&
-                                !l.archived,
-                            );
-                            const done = labs.filter((l) =>
-                              data.grades.some(
-                                (g) =>
-                                  g.student_id === u.id &&
-                                  g.lab_id === l.id &&
-                                  (g.value || 0) >= 3,
-                              ),
-                            ).length;
-                            return (
-                              <tr key={u.id}>
-                                <td>
-                                  <div className="student-name">
-                                    {u.name || "Без имени"}
-                                    {u.id === me.id && <small>вы</small>}
-                                  </div>
-                                </td>
-                                {labs.map((l) => {
-                                  const grade = data.grades.find(
+                  {showStatistics && canGrade ? (
+                    <GradeStatisticsPanel
+                      key={`${currentGroup}-${currentSubject}`}
+                      statistics={data.grade_statistics?.find(
+                        (s) =>
+                          s.group_id === currentGroup &&
+                          s.subject_id === currentSubject,
+                      )}
+                      labStatistics={(data.lab_statistics ?? []).filter(
+                        (s) =>
+                          s.group_id === currentGroup &&
+                          s.subject_id === currentSubject,
+                      )}
+                      labs={data.labs.filter(
+                        (l) =>
+                          l.group_id === currentGroup &&
+                          l.subject_id === currentSubject &&
+                          !l.archived,
+                      )}
+                      students={data.users.filter(
+                        (u) => u.group_id === currentGroup,
+                      )}
+                      summaries={data.grade_summaries.filter(
+                        (s) =>
+                          s.group_id === currentGroup &&
+                          s.subject_id === currentSubject,
+                      )}
+                      pending={Object.keys(pending).length > 0}
+                    />
+                  ) : (
+                    <>
+                      <div className="table-wrap">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Студент</th>
+                              {data.labs
+                                .filter(
+                                  (l) =>
+                                    l.group_id === currentGroup &&
+                                    l.subject_id === currentSubject &&
+                                    !l.archived,
+                                )
+                                .map((l) => (
+                                  <th key={l.id}>
+                                    <button
+                                      className="lab-heading"
+                                      title={l.name}
+                                      disabled={!canGrade}
+                                      onClick={() => labForm(l)}
+                                    >
+                                      ЛР {l.number}
+                                      <small>{l.name}</small>
+                                      <small className="lab-policy">
+                                        Вес: {l.weight_text ?? l.weight ?? 1} ·{" "}
+                                        {l.required === false
+                                          ? "необязательная"
+                                          : "обязательная"}
+                                      </small>
+                                    </button>
+                                  </th>
+                                ))}
+                              <th>Прогресс</th>
+                              <th>Средний балл</th>
+                              <th>Итог (подсказка)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {data.users
+                              .filter((u) => u.group_id === currentGroup)
+                              .map((u) => {
+                                const labs = data.labs.filter(
+                                  (l) =>
+                                    l.group_id === currentGroup &&
+                                    l.subject_id === currentSubject &&
+                                    !l.archived,
+                                );
+                                const done = labs.filter((l) =>
+                                  data.grades.some(
                                     (g) =>
                                       g.student_id === u.id &&
-                                      g.lab_id === l.id,
-                                  );
-                                  const p = pending[u.id + "-" + l.id];
-                                  return (
-                                    <td key={l.id}>
-                                      {canGrade ? (
-                                        <select
-                                          aria-label={`${u.name}, ЛР ${l.number}`}
-                                          className={
-                                            "grade grade-" +
-                                            (p?.value ??
-                                              grade?.value ??
-                                              "empty")
-                                          }
-                                          disabled={!!p}
-                                          value={p?.value ?? grade?.value ?? ""}
-                                          onChange={(e) =>
-                                            saveGrade(
-                                              u.id,
-                                              l.id,
-                                              e.target.value,
-                                              grade?.version || 0,
-                                            )
-                                          }
-                                        >
-                                          {["", 2, 3, 4, 5].map((v) => (
-                                            <option key={v} value={v}>
-                                              {v === "" ? "—" : v}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      ) : (
-                                        <span
-                                          className={
-                                            "grade grade-" +
-                                            (grade?.value ?? "empty")
-                                          }
-                                        >
-                                          {grade?.value ?? "—"}
-                                        </span>
-                                      )}
+                                      g.lab_id === l.id &&
+                                      (g.value || 0) >= 3,
+                                  ),
+                                ).length;
+                                return (
+                                  <tr key={u.id}>
+                                    <td>
+                                      <div className="student-name">
+                                        {u.name || "Без имени"}
+                                        {u.id === me.id && <small>вы</small>}
+                                      </div>
                                     </td>
-                                  );
-                                })}
-                                <td>
-                                  <div
-                                    className="progress-label"
-                                    title="Все активные работы, включая необязательные. Необязательные работы не блокируют итог."
-                                  >
-                                    {done} / {labs.length}
-                                    <small>осталось {labs.length - done}</small>
-                                  </div>
-                                </td>
-                                <GradeSummaryCells
-                                  summary={data.grade_summaries?.find(
-                                    (s) =>
-                                      s.student_id === u.id &&
-                                      s.subject_id === currentSubject &&
-                                      s.group_id === currentGroup,
-                                  )}
-                                  pending={labs.some(
-                                    (l) => !!pending[u.id + "-" + l.id],
-                                  )}
-                                />
-                              </tr>
-                            );
-                          })}
-                      </tbody>
-                    </table>
-                  </div>
-                  {Object.entries(pending).map(([cell, p]) => (
-                    <div key={cell} className={p.error ? "alert" : "info"}>
-                      {p.error || "Сохраняем оценку…"}
-                      {p.error && (
-                        <>
-                          <button
-                            onClick={() =>
-                              saveGrade(
-                                p.user,
-                                p.lab,
-                                p.value,
-                                p.version,
-                                p.key,
-                              )
-                            }
-                          >
-                            Повторить
-                          </button>
-                          <button
-                            className="secondary"
-                            onClick={() => {
-                              setPending((n) => {
-                                const v = { ...n };
-                                delete v[cell];
-                                return v;
-                              });
-                              refresh();
-                            }}
-                          >
-                            Отменить правку
-                          </button>
-                        </>
+                                    {labs.map((l) => {
+                                      const grade = data.grades.find(
+                                        (g) =>
+                                          g.student_id === u.id &&
+                                          g.lab_id === l.id,
+                                      );
+                                      const p = pending[u.id + "-" + l.id];
+                                      return (
+                                        <td key={l.id}>
+                                          {canGrade ? (
+                                            <select
+                                              aria-label={`${u.name}, ЛР ${l.number}`}
+                                              className={
+                                                "grade grade-" +
+                                                (p?.value ??
+                                                  grade?.value ??
+                                                  "empty")
+                                              }
+                                              disabled={!!p}
+                                              value={
+                                                p?.value ?? grade?.value ?? ""
+                                              }
+                                              onChange={(e) =>
+                                                saveGrade(
+                                                  u.id,
+                                                  l.id,
+                                                  e.target.value,
+                                                  grade?.version || 0,
+                                                )
+                                              }
+                                            >
+                                              {["", 2, 3, 4, 5].map((v) => (
+                                                <option key={v} value={v}>
+                                                  {v === "" ? "—" : v}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          ) : (
+                                            <span
+                                              className={
+                                                "grade grade-" +
+                                                (grade?.value ?? "empty")
+                                              }
+                                            >
+                                              {grade?.value ?? "—"}
+                                            </span>
+                                          )}
+                                        </td>
+                                      );
+                                    })}
+                                    <td>
+                                      <div
+                                        className="progress-label"
+                                        title="Все активные работы, включая необязательные. Необязательные работы не блокируют итог."
+                                      >
+                                        {done} / {labs.length}
+                                        <small>
+                                          осталось {labs.length - done}
+                                        </small>
+                                      </div>
+                                    </td>
+                                    <GradeSummaryCells
+                                      summary={data.grade_summaries?.find(
+                                        (s) =>
+                                          s.student_id === u.id &&
+                                          s.subject_id === currentSubject &&
+                                          s.group_id === currentGroup,
+                                      )}
+                                      pending={labs.some(
+                                        (l) => !!pending[u.id + "-" + l.id],
+                                      )}
+                                    />
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+                      {Object.entries(pending).map(([cell, p]) => (
+                        <div key={cell} className={p.error ? "alert" : "info"}>
+                          {p.error || "Сохраняем оценку…"}
+                          {p.error && (
+                            <>
+                              <button
+                                onClick={() =>
+                                  saveGrade(
+                                    p.user,
+                                    p.lab,
+                                    p.value,
+                                    p.version,
+                                    p.key,
+                                  )
+                                }
+                              >
+                                Повторить
+                              </button>
+                              <button
+                                className="secondary"
+                                onClick={() => cancelGrade(cell)}
+                              >
+                                Отменить правку
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                      {!data.labs.some(
+                        (l) =>
+                          l.group_id === currentGroup &&
+                          l.subject_id === currentSubject &&
+                          !l.archived,
+                      ) && (
+                        <Empty
+                          title="Нет лабораторных"
+                          text={canGrade ? "" : ""}
+                        />
                       )}
-                    </div>
-                  ))}
-                  {!data.labs.some(
-                    (l) =>
-                      l.group_id === currentGroup &&
-                      l.subject_id === currentSubject &&
-                      !l.archived,
-                  ) && (
-                    <Empty title="Нет лабораторных" text={canGrade ? "" : ""} />
+                      <p className="footnote">
+                        2 — не сдано · 3, 4, 5 — сдано · Пустая ячейка — оценки
+                        ещё нет
+                      </p>
+                      <p className="footnote">
+                        Средний балл учитывает веса работ: обязательная без
+                        оценки считается за 2, необязательная без оценки не
+                        учитывается. Итог — подсказка с округлением до целого
+                        только после сдачи всех обязательных работ. Оценка
+                        автоматически не выставляется. Расчёты выполняются по
+                        сохранённым данным; округлённый средний не используется
+                        для повторного округления итога.
+                      </p>
+                    </>
                   )}
-                  <p className="footnote">
-                    2 — не сдано · 3, 4, 5 — сдано · Пустая ячейка — оценки ещё
-                    нет
-                  </p>
-                  <p className="footnote">
-                    Средний балл учитывает веса работ: обязательная без оценки
-                    считается за 2, необязательная без оценки не учитывается.
-                    Итог — подсказка с округлением до целого только после сдачи
-                    всех обязательных работ. Оценка автоматически не
-                    выставляется. Расчёты выполняются по сохранённым данным;
-                    округлённый средний не используется для повторного
-                    округления итога.
-                  </p>
                 </>
               ) : tab === "admin" && me.root ? (
                 <>
@@ -1160,25 +1241,38 @@ function App() {
                             <Plus size={18} />
                           </button>
                         </div>
-                        {data.users.filter((u) => u.teacher).map((u) => (
-                          <div className="admin-row" key={u.id}>
-                            <span>
-                              {u.name || "Ожидает регистрации"}
-                              <small>{u.id}</small>
-                            </span>
-                            <button
-                              className="link danger"
-                              aria-label={`Отозвать роль преподавателя ${u.name || u.id}`}
-                              onClick={() => {
-                                if (confirm("Отозвать роль преподавателя? Доступ ко всем группам и предметам будет закрыт."))
-                                  action({ kind: "role", user_id: u.id, enabled: false });
-                              }}
-                            >
-                              Отозвать роль
-                            </button>
-                          </div>
-                        ))}
-                        <p className="footnote">Преподаватель сразу получает доступ ко всем группам и предметам.</p>
+                        {data.users
+                          .filter((u) => u.teacher)
+                          .map((u) => (
+                            <div className="admin-row" key={u.id}>
+                              <span>
+                                {u.name || "Ожидает регистрации"}
+                                <small>{u.id}</small>
+                              </span>
+                              <button
+                                className="link danger"
+                                aria-label={`Отозвать роль преподавателя ${u.name || u.id}`}
+                                onClick={() => {
+                                  if (
+                                    confirm(
+                                      "Отозвать роль преподавателя? Доступ ко всем группам и предметам будет закрыт.",
+                                    )
+                                  )
+                                    action({
+                                      kind: "role",
+                                      user_id: u.id,
+                                      enabled: false,
+                                    });
+                                }}
+                              >
+                                Отозвать роль
+                              </button>
+                            </div>
+                          ))}
+                        <p className="footnote">
+                          Преподаватель сразу получает доступ ко всем группам и
+                          предметам.
+                        </p>
                       </section>
                     )}
                     {rootMode && (
@@ -1186,43 +1280,44 @@ function App() {
                         <div className="section-heading">
                           <h2>Студенты</h2>
                         </div>
-                        {data.users.filter((u) => !u.teacher && u.group_id !== null).map((u) => (
-                          <div className="admin-row" key={u.id}>
-                            <span>
-                              {u.name || "Ожидает регистрации"}
-                              <small>
-                                {u.id} ·{" "}
-                                {groupName(u.group_id)}
-                              </small>
-                            </span>
-                            <button
-                              className="link"
-                              onClick={() =>
-                                openForm(
-                                  "Перевод в другую группу",
-                                  [
-                                    {
-                                      name: "group",
-                                      label: "Новая группа",
-                                      options: groups.map((g) => ({
-                                        value: g.id,
-                                        label: g.name,
-                                      })),
-                                    },
-                                  ],
-                                  (v) => ({
-                                    kind: "transfer",
-                                    user_id: u.id,
-                                    group_id: Number(v.group),
-                                  }),
-                                  "Старые оценки сохраняются в прежней ведомости. Активные записи нужно закрыть заранее.",
-                                )
-                              }
-                            >
-                              Группа
-                            </button>
-                          </div>
-                        ))}
+                        {data.users
+                          .filter((u) => !u.teacher && u.group_id !== null)
+                          .map((u) => (
+                            <div className="admin-row" key={u.id}>
+                              <span>
+                                {u.name || "Ожидает регистрации"}
+                                <small>
+                                  {u.id} · {groupName(u.group_id)}
+                                </small>
+                              </span>
+                              <button
+                                className="link"
+                                onClick={() =>
+                                  openForm(
+                                    "Перевод в другую группу",
+                                    [
+                                      {
+                                        name: "group",
+                                        label: "Новая группа",
+                                        options: groups.map((g) => ({
+                                          value: g.id,
+                                          label: g.name,
+                                        })),
+                                      },
+                                    ],
+                                    (v) => ({
+                                      kind: "transfer",
+                                      user_id: u.id,
+                                      group_id: Number(v.group),
+                                    }),
+                                    "Старые оценки сохраняются в прежней ведомости. Активные записи нужно закрыть заранее.",
+                                  )
+                                }
+                              >
+                                Группа
+                              </button>
+                            </div>
+                          ))}
                       </section>
                     )}
                   </div>
@@ -1252,7 +1347,9 @@ function App() {
           {notice}
         </div>
       )}
-      {!roleScreen && modal && <FormModal modal={modal} close={() => setModal(undefined)} />}
+      {!roleScreen && modal && (
+        <FormModal modal={modal} close={() => setModal(undefined)} />
+      )}
       {busy && (
         <div className="busy">
           <LoaderCircle className="spin" size={16} /> Сохраняем…
@@ -1273,7 +1370,6 @@ function Profile({
   role: string;
   save: (n: string, g: number) => Promise<void>;
   back: () => void;
-
 }) {
   const [n, setN] = useState(me.name);
   const [g, setG] = useState(me.group_id || 0);
@@ -1305,8 +1401,8 @@ function Profile({
       </label>
       {role === "student" && !groups.length ? (
         <div className="info" role="status">
-          <b>Групп пока нет.</b>{" "}
-          Обратитесь к администратору, чтобы он добавил вашу учебную группу.
+          <b>Групп пока нет.</b> Обратитесь к администратору, чтобы он добавил
+          вашу учебную группу.
         </div>
       ) : role === "student" ? (
         <label>
