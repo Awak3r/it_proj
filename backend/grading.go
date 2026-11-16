@@ -3,7 +3,9 @@ package main
 // Current teachers can read every gradebook. Other group members, including
 // former teachers, retain only their own-group read access. All gradebook
 // representations share this predicate so role revocation applies consistently.
-const visibleLab = `($2 OR
+const boundLab = `EXISTS(SELECT 1 FROM subject_groups sg WHERE sg.subject_id=l.subject_id AND sg.group_id=l.group_id)`
+
+const visibleLab = boundLab + ` AND ($2 OR
     l.group_id=(SELECT group_id FROM users WHERE id=$1) OR
     (SELECT teacher FROM users WHERE id=$1))`
 

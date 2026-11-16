@@ -16,6 +16,7 @@ func TestTeacherGlobalAccessAndRoleRevocation(t *testing.T) {
 		DELETE FROM assignments;
 		INSERT INTO groups(id,name) VALUES(2,'Other group');
 		INSERT INTO subjects(id,name) VALUES(2,'Other subject');
+		INSERT INTO subject_groups VALUES(1,2),(2,1),(2,2);
 		INSERT INTO users(id,name,teacher) VALUES(2002,'Other teacher',true);
 		INSERT INTO users(id,name,group_id) VALUES(4001,'Other student',2);
 		SELECT setval(pg_get_serial_sequence('events','id'),1);`)
@@ -23,7 +24,7 @@ func TestTeacherGlobalAccessAndRoleRevocation(t *testing.T) {
 		acceptanceCommand(t, s, 2001, command{Kind: "lab", SubjectID: pair[0], GroupID: pair[1], Number: 1, Name: "Global lab"}, 200)
 	}
 	acceptanceGrade(t, s, 2001, 4001, 4, 5, 0)
-	acceptanceCommand(t, s, 2001, command{Kind: "event_create", Name: "All groups", SubjectID: 2, GroupIDs: []int64{1, 2}, StartsAt: time.Now().Add(time.Hour), Strategy: "fifo"}, 200)
+	acceptanceCommand(t, s, 2001, command{Kind: "event_create", Name: "All groups", SubjectID: 2, GroupIDs: &[]int64{1, 2}, StartsAt: time.Now().Add(time.Hour), Strategy: "fifo"}, 200)
 	acceptanceCommand(t, s, 2001, command{Kind: "event_action", EventID: 2, Action: "open"}, 200)
 	acceptanceJoin(t, s, 2, 4001)
 	acceptanceJoin(t, s, 1, 3001)
@@ -98,7 +99,7 @@ func TestTeacherGlobalAccessAndRoleRevocation(t *testing.T) {
 	for _, c := range []command{
 		{Kind: "lab", SubjectID: 1, GroupID: 1, Number: 2, Name: "Revoked"},
 		{Kind: "grade", UserID: 4001, LabID: 4, Version: 1},
-		{Kind: "event_create", Name: "Revoked", SubjectID: 2, GroupIDs: []int64{2}, StartsAt: time.Now(), Strategy: "fifo"},
+		{Kind: "event_create", Name: "Revoked", SubjectID: 2, GroupIDs: &[]int64{2}, StartsAt: time.Now(), Strategy: "fifo"},
 		{Kind: "event_action", EventID: 2, Action: "cancel"},
 	} {
 		before := studentPermissionsRows(t, s, ctx)
@@ -117,18 +118,20 @@ func TestTeacherReferenceValidationAndArchives(t *testing.T) {
 		for _, uid := range []int64{1001, 2001} {
 			before := studentPermissionsRows(t, s, ctx)
 			acceptanceCommand(t, s, uid, command{Kind: "lab", SubjectID: pair[0], GroupID: pair[1], Number: 1, Name: "Invalid reference"}, 400)
-			acceptanceCommand(t, s, uid, command{Kind: "event_create", SubjectID: pair[0], GroupIDs: []int64{pair[1]}, Name: "Invalid reference", StartsAt: time.Now(), Strategy: "fifo"}, 400)
+			acceptanceCommand(t, s, uid, command{Kind: "event_create", SubjectID: pair[0], GroupIDs: &[]int64{pair[1]}, Name: "Invalid reference", StartsAt: time.Now(), Strategy: "fifo"}, 400)
 			studentPermissionsUnchanged(t, s, ctx, before)
 		}
 	}
 	for _, table := range []string{"groups", "subjects"} {
 		notificationETAExec(t, s, ctx, "UPDATE "+table+" SET archived=true WHERE id=1")
-		acceptanceCommand(t, s, 2001, command{Kind: "event_create", SubjectID: 1, GroupIDs: []int64{1}, Name: "Archived", StartsAt: time.Now(), Strategy: "fifo"}, 400)
+		acceptanceCommand(t, s, 2001, command{Kind: "event_create", SubjectID: 1, GroupIDs: &[]int64{1}, Name: "Archived", StartsAt: time.Now(), Strategy: "fifo"}, 400)
+		acceptanceCommand(t, s, 2001, command{Kind: "lab", SubjectID: 1, GroupID: 1, Number: 1, Name: "Archived"}, 400)
 		notificationETAExec(t, s, ctx, "UPDATE "+table+" SET archived=false WHERE id=1")
 	}
 	// Existing lab/grade operations do not reject archived groups or subjects.
-	notificationETAExec(t, s, ctx, "UPDATE groups SET archived=true; UPDATE subjects SET archived=true")
 	acceptanceCommand(t, s, 2001, command{Kind: "lab", SubjectID: 1, GroupID: 1, Number: 1, Name: "Historical"}, 200)
+	notificationETAExec(t, s, ctx, "UPDATE groups SET archived=true; UPDATE subjects SET archived=true")
+	acceptanceCommand(t, s, 2001, command{Kind: "lab", ID: 1, Number: 1, Name: "Historical"}, 200)
 	acceptanceGrade(t, s, 2001, 3001, 1, 4, 0)
 	acceptanceCommand(t, s, 2001, command{Kind: "lab", ID: 1, Number: 1, Name: "Historical", Enabled: true}, 200)
 	acceptanceCommand(t, s, 2001, command{Kind: "grade", UserID: 3001, LabID: 1, Version: 1}, 400)

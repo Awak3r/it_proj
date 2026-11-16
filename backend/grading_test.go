@@ -152,6 +152,7 @@ func TestWeightedSummaryNoStudents(t *testing.T) {
 	s, ctx := notificationETAServer(t)
 	s.token = "synthetic-weighted:test"
 	notificationETAExec(t, s, ctx, `INSERT INTO groups(id,name) VALUES(2,'Empty group');
+			INSERT INTO subject_groups VALUES(1,2);
 		INSERT INTO labs(subject_id,group_id,number,name) VALUES(1,2,1,'Empty board')`)
 	state := gradingSnapshot(t, s, 1001)
 	if len(state.Labs) != 1 || len(state.Summaries) != 0 {
@@ -298,6 +299,7 @@ func TestWeightedDualRoleMembership(t *testing.T) {
 		UPDATE users SET group_id=1 WHERE id=2001;
 		INSERT INTO groups(id,name) VALUES(2,'Unrelated group');
 		INSERT INTO subjects(id,name) VALUES(2,'Other subject');
+	INSERT INTO subject_groups VALUES(2,1),(1,2),(2,2);
 		INSERT INTO users(id,name,group_id) VALUES(4001,'Other student',2);
 		INSERT INTO labs(id,subject_id,group_id,number,name) VALUES
 			(1,1,1,1,'Own assigned'),(2,2,1,1,'Own unassigned'),
@@ -374,6 +376,7 @@ func TestWeightedSummaryScopeAndRevocation(t *testing.T) {
 	notificationETAExec(t, s, ctx, `
 	INSERT INTO groups(id,name) VALUES(2,'Other group');
 	INSERT INTO subjects(id,name) VALUES(2,'Other subject');
+	INSERT INTO subject_groups VALUES(2,1),(1,2),(2,2);
 	INSERT INTO users(id,name,group_id) VALUES(4001,'Other student',2);
 	INSERT INTO labs(subject_id,group_id,number,name) VALUES(1,1,1,'A'),(2,1,1,'B'),(1,2,1,'C'),(2,2,1,'D');
 	INSERT INTO grades(student_id,lab_id,value) SELECT 3001,id,5 FROM labs WHERE group_id=1;

@@ -38,7 +38,7 @@ test("weighted local API: UI creates, persists, edits and archives an isolated l
     await command({ kind: "group", name });
     group = (await read()).groups.find((g) => g.name === name);
     expect(group).toBeDefined();
-    await command({ kind: "subject", name });
+    await command({ kind: "subject", name, group_ids: [group!.id] });
     subject = (await read()).subjects.find((s) => s.name === name);
     expect(subject).toBeDefined();
     await page.route("https://telegram.org/**", (route) => route.abort());
@@ -195,7 +195,7 @@ test("statistics local API: isolated weighted board matches the root panel and h
     await command({ kind: "group", name });
     group = (await read()).groups.find((item) => item.name === name);
     expect(group).toBeDefined();
-    await command({ kind: "subject", name });
+    await command({ kind: "subject", name, group_ids: [group!.id] });
     subject = (await read()).subjects.find((item) => item.name === name);
     expect(subject).toBeDefined();
     await command(

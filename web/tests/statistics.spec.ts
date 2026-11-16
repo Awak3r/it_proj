@@ -21,6 +21,11 @@ function snapshot(): StatisticsState {
       name: `Предмет ${id}`,
       archived: false,
     })),
+    subject_groups: [
+      { subject_id: 1, group_id: 1 },
+      { subject_id: 2, group_id: 1 },
+      { subject_id: 1, group_id: 2 },
+    ],
     users: [
       teacher,
       { id: 3001, name: "Анна Готовая", group_id: 1, teacher: false },

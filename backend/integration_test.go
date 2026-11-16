@@ -99,7 +99,7 @@ func TestIntegration(t *testing.T) {
 	must(1001, command{Kind: "profile", Name: "Root"})
 	must(1001, command{Kind: "group", Name: "М8О-201"})
 	must(1001, command{Kind: "group", Name: "М8О-202"})
-	must(1001, command{Kind: "subject", Name: "Программирование"})
+	must(1001, command{Kind: "subject", Name: "Программирование", GroupIDs: &[]int64{1}})
 	must(1001, command{Kind: "role", UserID: 2001, Enabled: true})
 	must(2001, command{Kind: "profile", Name: "Преподаватель"})
 	must(2001, command{Kind: "lab", SubjectID: 1, GroupID: 1, Number: 1, Name: "Массивы"})
@@ -110,7 +110,7 @@ func TestIntegration(t *testing.T) {
 	must(4001, command{Kind: "profile", Name: "Другая группа", GroupID: 2})
 	makeEvent := func(strategy string) int64 {
 		t.Helper()
-		must(2001, command{Kind: "event_create", Name: "Сдача", SubjectID: 1, GroupIDs: []int64{1}, StartsAt: time.Now().Add(time.Hour), Strategy: strategy})
+		must(2001, command{Kind: "event_create", Name: "Сдача", SubjectID: 1, GroupIDs: &[]int64{1}, StartsAt: time.Now().Add(time.Hour), Strategy: strategy})
 		id := int64(count("SELECT max(id) FROM events"))
 		must(2001, command{Kind: "event_action", EventID: id, Action: "open"})
 		return id

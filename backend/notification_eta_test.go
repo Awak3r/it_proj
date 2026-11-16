@@ -72,6 +72,7 @@ func notificationETAServer(t *testing.T) (*server, context.Context) {
 	notificationETAExec(t, s, ctx, `
 INSERT INTO groups(id,name) VALUES(1,'Synthetic group');
 INSERT INTO subjects(id,name) VALUES(1,'Synthetic subject');
+INSERT INTO subject_groups(subject_id,group_id) VALUES(1,1);
 INSERT INTO users(id,name,teacher) VALUES(1001,'Synthetic teacher',true);
 INSERT INTO users(id,name,group_id) SELECT n,'Synthetic student '||n,1 FROM generate_series(3001,3010) n;
 INSERT INTO events(id,name,subject_id,teacher_id,starts_at,state,strategy,duration,room)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 
 	"testing"
 	"time"
@@ -17,12 +18,25 @@ import (
 func studentPermissionsRows(t *testing.T, s *server, ctx context.Context) map[string]string {
 	t.Helper()
 	out := make(map[string]string)
-	for _, table := range []string{"users", "groups", "subjects", "assignments", "labs", "grades", "events", "event_groups", "entries", "audit", "notifications", "requests"} {
-		var rows string
-		if err := s.db.QueryRow(ctx, "SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY to_jsonb(r)::text),'[]'::jsonb)::text FROM "+table+" r").Scan(&rows); err != nil {
+	var queries []string
+	for _, table := range []string{"users", "groups", "subjects", "subject_groups", "assignments", "labs", "grades", "events", "event_groups", "entries", "audit", "notifications", "requests"} {
+		queries = append(queries, "SELECT '"+table+"', COALESCE(jsonb_agg(to_jsonb(r) ORDER BY to_jsonb(r)::text),'[]'::jsonb)::text FROM "+table+" r")
+	}
+	// One statement provides one snapshot and avoids a round trip per table.
+	rows, err := s.db.Query(ctx, strings.Join(queries, " UNION ALL "))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var table, data string
+		if err := rows.Scan(&table, &data); err != nil {
 			t.Fatal(err)
 		}
-		out[table] = rows
+		out[table] = data
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
 	}
 	return out
 }
@@ -78,8 +92,8 @@ func TestStudentPermissionsCommands(t *testing.T) {
 		{"grade create", command{Kind: "grade", UserID: 3003, LabID: 1, Value: &five}, ""},
 		{"grade self clear", command{Kind: "grade", UserID: 3001, LabID: 1, Version: 1}, ""},
 		{"grade other clear", command{Kind: "grade", UserID: 3002, LabID: 1, Version: 1}, ""},
-		{"event create", command{Kind: "event_create", Name: "Student-created event", SubjectID: 1, GroupIDs: []int64{1}, StartsAt: startsAt, Strategy: "fifo"}, ""},
-		{"event create forged teacher", command{Kind: "event_create", Name: "Forged teacher event", SubjectID: 1, GroupIDs: []int64{1}, TeacherID: 2001, StartsAt: startsAt, Strategy: "fifo"}, ""},
+		{"event create", command{Kind: "event_create", Name: "Student-created event", SubjectID: 1, GroupIDs: &[]int64{1}, StartsAt: startsAt, Strategy: "fifo"}, ""},
+		{"event create forged teacher", command{Kind: "event_create", Name: "Forged teacher event", SubjectID: 1, GroupIDs: &[]int64{1}, TeacherID: 2001, StartsAt: startsAt, Strategy: "fifo"}, ""},
 		{"event update", command{Kind: "event_update", EventID: 1, Name: "Renamed event", StartsAt: startsAt, Room: "505", Description: "Changed", Duration: 15}, ""},
 		{"registration open", command{Kind: "event_action", EventID: 1, Action: "open"}, "UPDATE events SET registration_open=false WHERE id=1"},
 		{"registration close", command{Kind: "event_action", EventID: 1, Action: "close"}, ""},

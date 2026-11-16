@@ -76,7 +76,7 @@ func readStatistics(ctx context.Context, tx pgx.Tx, uid int64, root bool) ([]gra
   COALESCE(SUM(g.value),0)::bigint
  FROM labs l LEFT JOIN users u ON u.group_id=l.group_id
  LEFT JOIN grades g ON g.lab_id=l.id AND g.student_id=u.id
- WHERE NOT l.archived
+ WHERE NOT l.archived AND `+boundLab+`
  GROUP BY l.id ORDER BY l.group_id,l.subject_id,l.id`)
 	if err != nil {
 		return nil, nil, err

@@ -19,6 +19,7 @@ function snapshot(): State {
     me,
     groups: [{ id: 1, name: "Acceptance group", archived: false }],
     subjects: [{ id: 1, name: "Acceptance subject", archived: false }],
+    subject_groups: [{ subject_id: 1, group_id: 1 }],
     users: [me, { id: 3001, name: studentName, group_id: 1, teacher: false }],
     assignments: [{ subject_id: 1, group_id: 1, teacher_id: me.id }],
     labs: [1, 2, 3, 4].map((id) => ({

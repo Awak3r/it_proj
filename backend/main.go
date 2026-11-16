@@ -187,18 +187,20 @@ func (s *server) state(w http.ResponseWriter, r *http.Request, uid int64) {
 	}
 	result := map[string]any{"me": me, "assignments": []any{}}
 	queries := map[string]string{
-		"groups": "SELECT * FROM groups ORDER BY name", "subjects": "SELECT * FROM subjects ORDER BY name",
+		"groups":          "SELECT * FROM groups ORDER BY name",
+		"subjects":        `SELECT s.* FROM subjects s WHERE $2 OR (SELECT teacher FROM users WHERE id=$1) OR EXISTS(SELECT 1 FROM subject_groups sg WHERE sg.subject_id=s.id AND sg.group_id=(SELECT group_id FROM users WHERE id=$1)) ORDER BY s.name`,
+		"subject_groups":  `SELECT sg.* FROM subject_groups sg WHERE $2 OR (SELECT teacher FROM users WHERE id=$1) OR sg.group_id=(SELECT group_id FROM users WHERE id=$1) ORDER BY sg.subject_id,sg.group_id`,
 		"users":           `SELECT u.* FROM users u WHERE $2 OR u.id=$1 OR u.group_id=(SELECT group_id FROM users WHERE id=$1) OR (SELECT teacher FROM users WHERE id=$1) ORDER BY u.name`,
 		"labs":            `SELECT l.*,l.weight::text AS weight_text FROM labs l WHERE ` + visibleLab + ` ORDER BY number,id`,
 		"grades":          `SELECT g.* FROM grades g JOIN labs l ON l.id=g.lab_id WHERE ` + visibleLab,
 		"grade_summaries": gradeSummariesSQL,
-		"events":          `SELECT e.*, ARRAY(SELECT group_id FROM event_groups WHERE event_id=e.id) AS group_ids, (SELECT name FROM users WHERE id=e.teacher_id) AS teacher_name, (SELECT AVG(EXTRACT(EPOCH FROM (ended_at-called_at)))/60 FROM entries WHERE event_id=e.id AND state='completed' AND called_at IS NOT NULL) AS average_minutes FROM events e WHERE $2 OR (SELECT teacher FROM users WHERE id=$1) OR EXISTS(SELECT 1 FROM event_groups eg WHERE eg.event_id=e.id AND eg.group_id=(SELECT group_id FROM users WHERE id=$1)) ORDER BY e.starts_at DESC`,
-		"entries":         `SELECT q.*,u.name AS user_name,u.group_id FROM entries q JOIN users u ON u.id=q.user_id JOIN events e ON e.id=q.event_id WHERE $2 OR (SELECT teacher FROM users WHERE id=$1) OR EXISTS(SELECT 1 FROM event_groups eg WHERE eg.event_id=e.id AND eg.group_id=(SELECT group_id FROM users WHERE id=$1)) ORDER BY q.position,q.id`,
+		"events":          `SELECT e.*, ARRAY(SELECT group_id FROM event_groups WHERE event_id=e.id) AS group_ids, (SELECT name FROM users WHERE id=e.teacher_id) AS teacher_name, (SELECT AVG(EXTRACT(EPOCH FROM (ended_at-called_at)))/60 FROM entries WHERE event_id=e.id AND state='completed' AND called_at IS NOT NULL) AS average_minutes FROM events e WHERE $2 OR (SELECT teacher FROM users WHERE id=$1) OR EXISTS(SELECT 1 FROM event_groups eg JOIN subject_groups sg ON sg.subject_id=e.subject_id AND sg.group_id=eg.group_id WHERE eg.event_id=e.id AND eg.group_id=(SELECT group_id FROM users WHERE id=$1)) ORDER BY e.starts_at DESC`,
+		"entries":         `SELECT q.*,u.name AS user_name,u.group_id FROM entries q JOIN users u ON u.id=q.user_id JOIN events e ON e.id=q.event_id WHERE $2 OR (SELECT teacher FROM users WHERE id=$1) OR EXISTS(SELECT 1 FROM event_groups eg JOIN subject_groups sg ON sg.subject_id=e.subject_id AND sg.group_id=eg.group_id WHERE eg.event_id=e.id AND eg.group_id=(SELECT group_id FROM users WHERE id=$1)) ORDER BY q.position,q.id`,
 		"audit":           `SELECT * FROM audit WHERE $2 ORDER BY id DESC LIMIT 100`,
 	}
 	for key, sql := range queries {
 		var args []any
-		if key != "groups" && key != "subjects" {
+		if key != "groups" {
 			args = []any{uid, s.roots[uid]}
 			if key == "audit" {
 				sql = strings.ReplaceAll(sql, "$2", "$1")
@@ -236,7 +238,7 @@ type command struct {
 	UserID      int64        `json:"user_id"`
 	EventID     int64        `json:"event_id"`
 	LabID       int64        `json:"lab_id"`
-	GroupIDs    []int64      `json:"group_ids"`
+	GroupIDs    *[]int64     `json:"group_ids,omitempty"`
 	Number      int          `json:"number"`
 	Value       *int         `json:"value"`
 	Weight      *json.Number `json:"weight"`
@@ -350,21 +352,22 @@ func (s *server) execute(ctx context.Context, tx pgx.Tx, uid int64, c command) e
 			return fail("Выберите действующую группу")
 		}
 		return exec("UPDATE users SET name=$2,group_id=NULLIF($3,0) WHERE id=$1", uid, strings.TrimSpace(c.Name), c.GroupID)
-	case "group", "subject":
+	case "subject":
+		if !root {
+			return forbidden()
+		}
+		return saveSubject(ctx, tx, c)
+	case "group":
 		if !root {
 			return forbidden()
 		}
 		if !validName(c.Name) {
 			return fail("Укажите название")
 		}
-		table := "groups"
-		if c.Kind == "subject" {
-			table = "subjects"
-		}
 		if c.ID == 0 {
-			return exec("INSERT INTO "+table+"(name) VALUES($1)", strings.TrimSpace(c.Name))
+			return exec("INSERT INTO groups(name) VALUES($1)", strings.TrimSpace(c.Name))
 		}
-		return exec("UPDATE "+table+" SET name=$2,archived=$3 WHERE id=$1", c.ID, strings.TrimSpace(c.Name), c.Enabled)
+		return exec("UPDATE groups SET name=$2,archived=$3 WHERE id=$1", c.ID, strings.TrimSpace(c.Name), c.Enabled)
 	case "role":
 		if !root {
 			return forbidden()
@@ -404,6 +407,9 @@ func (s *server) execute(ctx context.Context, tx pgx.Tx, uid int64, c command) e
 		if !exists(ctx, tx, "SELECT EXISTS(SELECT 1 FROM groups g, subjects s WHERE g.id=$1 AND s.id=$2)", c.GroupID, c.SubjectID) {
 			return fail("Группа или предмет не найдены")
 		}
+		if err := requireCurriculum(ctx, tx, c.SubjectID, c.GroupID, c.ID == 0); err != nil {
+			return err
+		}
 		if !validName(c.Name) || c.Number <= 0 {
 			return fail("Укажите номер и название работы")
 		}
@@ -420,13 +426,16 @@ func (s *server) execute(ctx context.Context, tx pgx.Tx, uid int64, c command) e
 		}
 		return exec("UPDATE labs SET number=$2,name=$3,archived=$4,weight=COALESCE($5::numeric,weight),required=COALESCE($6::boolean,required) WHERE id=$1", c.ID, c.Number, strings.TrimSpace(c.Name), c.Enabled, weight, c.Required)
 	case "grade":
-		var group int64
+		var group, subject int64
 		var archived bool
-		if e := tx.QueryRow(ctx, "SELECT group_id,archived FROM labs WHERE id=$1", c.LabID).Scan(&group, &archived); e != nil {
+		if e := tx.QueryRow(ctx, "SELECT group_id,subject_id,archived FROM labs WHERE id=$1", c.LabID).Scan(&group, &subject, &archived); e != nil {
 			return fail("Работа не найдена")
 		}
 		if !s.allowed(ctx, tx, uid) {
 			return forbidden()
+		}
+		if err := requireCurriculum(ctx, tx, subject, group, false); err != nil {
+			return err
 		}
 		if archived {
 			return fail("Работа в архиве")
@@ -452,7 +461,7 @@ func (s *server) execute(ctx context.Context, tx pgx.Tx, uid int64, c command) e
 		payload, _ := json.Marshal(map[string]any{"student_id": c.UserID, "lab_id": c.LabID, "old": old, "new": c.Value})
 		return exec("INSERT INTO audit(actor_id,action,payload) VALUES($1,'grade_change',$2)", uid, payload)
 	case "event_create":
-		if !validName(c.Name) || len(c.GroupIDs) == 0 || c.StartsAt.IsZero() || !validStrategy(c.Strategy) || c.Duration < 0 || c.Duration > 480 || len(c.Room) > 200 || len(c.Description) > 4000 {
+		if !validName(c.Name) || (c.GroupIDs == nil || len(*c.GroupIDs) == 0) || c.StartsAt.IsZero() || !validStrategy(c.Strategy) || c.Duration < 0 || c.Duration > 480 || len(c.Room) > 200 || len(c.Description) > 4000 {
 			return fail("Проверьте название, группы, дату и стратегию")
 		}
 		teacher := uid
@@ -462,16 +471,16 @@ func (s *server) execute(ctx context.Context, tx pgx.Tx, uid int64, c command) e
 		if !s.allowed(ctx, tx, uid) {
 			return forbidden()
 		}
-		for _, g := range c.GroupIDs {
-			if !exists(ctx, tx, "SELECT EXISTS(SELECT 1 FROM groups g, subjects s WHERE g.id=$1 AND s.id=$2 AND NOT g.archived AND NOT s.archived)", g, c.SubjectID) {
-				return fail("Группа или предмет в архиве")
+		for _, g := range *c.GroupIDs {
+			if err := requireCurriculum(ctx, tx, c.SubjectID, g, true); err != nil {
+				return err
 			}
 		}
 		var id int64
 		if e := tx.QueryRow(ctx, "INSERT INTO events(name,subject_id,teacher_id,starts_at,room,description,duration,strategy) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id", strings.TrimSpace(c.Name), c.SubjectID, teacher, c.StartsAt, c.Room, c.Description, c.Duration, c.Strategy).Scan(&id); e != nil {
 			return e
 		}
-		for _, g := range c.GroupIDs {
+		for _, g := range *c.GroupIDs {
 			if e := exec("INSERT INTO event_groups VALUES($1,$2) ON CONFLICT DO NOTHING", id, g); e != nil {
 				return e
 			}

@@ -13,6 +13,7 @@ function snapshot(privilege: "student" | "teacher" | "root"): State {
     me,
     groups: [{ id: 1, name: "Test group", archived: false }],
     subjects: [{ id: 1, name: "Test subject", archived: false }],
+    subject_groups: [{ subject_id: 1, group_id: 1 }],
     users: [me],
     // Retained assignments/event ownership must not grant a student controls.
     assignments: [{ teacher_id: me.id, subject_id: 1, group_id: 1 }],
@@ -125,11 +126,12 @@ for (const privilege of ["student", "teacher", "root"] as const) {
   });
 }
 
-test("teacher can use every group and subject without assignments", async ({ page }) => {
+test("teacher can use every bound group and subject without assignments", async ({ page }) => {
   const state = snapshot("teacher");
   state.assignments = [];
   state.groups.push({ id: 2, name: "Other group", archived: false });
   state.subjects.push({ id: 2, name: "Other subject", archived: false });
+  state.subject_groups!.push({ subject_id: 2, group_id: 2 });
   state.users.push({ id: 4001, name: "Other group student", group_id: 2, teacher: false });
   state.labs.push({ ...state.labs[0], id: 2, group_id: 2, subject_id: 2, name: "Other lab" });
   await open(page, state);
@@ -138,7 +140,9 @@ test("teacher can use every group and subject without assignments", async ({ pag
   await page.getByRole("button", { name: "Создать событие" }).click();
   const eventForm = page.getByRole("dialog");
   await expect(eventForm.getByLabel("Предмет").getByRole("option")).toHaveText(["Test subject", "Other subject"]);
-  await expect(eventForm.getByLabel("Группы (можно выбрать несколько)").getByRole("option")).toHaveText(["Test group", "Other group"]);
+  await expect(eventForm.getByLabel("Группы (можно выбрать несколько)").getByRole("option")).toHaveText(["Test group"]);
+  await eventForm.getByLabel("Предмет").selectOption("2");
+  await expect(eventForm.getByLabel("Группы (можно выбрать несколько)").getByRole("option")).toHaveText(["Other group"]);
   await eventForm.locator(".icon-button").click();
   await page.locator("nav").getByRole("button", { name: "Ведомость", exact: true }).click();
   await page.locator(".filters select").nth(0).selectOption("2");

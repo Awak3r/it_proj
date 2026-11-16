@@ -12,6 +12,7 @@ function snapshot(root = false): State {
     },
     groups: [],
     subjects: [],
+    subject_groups: [],
     assignments: [],
     users: [],
     labs: [],

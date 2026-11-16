@@ -39,6 +39,9 @@ type Field = {
   type?: string;
   value?: string | number;
   options?: { value: string | number; label: string }[];
+  optionsFor?: (
+    values: Record<string, string>,
+  ) => { value: string | number; label: string }[];
   required?: boolean;
   min?: number;
   max?: number;
@@ -154,6 +157,39 @@ function App() {
     setTab("events");
     setShowStatistics(false);
   }, [data?.me.teacher, data?.me.root]);
+  // Forms capture their opening snapshot. Invalidate them when curriculum changes
+  // so a live update cannot submit an obsolete lab/event pair or overwrite links.
+  const curriculum =
+    data &&
+    JSON.stringify([data.subject_groups ?? [], data.groups, data.subjects]);
+  useEffect(() => {
+    setModal(undefined);
+  }, [curriculum]);
+  useEffect(() => {
+    if (!data) return;
+    const privileged = role !== "student" && (data.me.teacher || data.me.root);
+    const available = data.groups.filter(
+      (g) => !g.archived && (privileged || g.id === data.me.group_id),
+    );
+    const nextGroup =
+      available.find((g) => g.id === group)?.id ||
+      available.find((g) => g.id === data.me.group_id)?.id ||
+      available[0]?.id ||
+      0;
+    const availableSubjects = data.subjects.filter(
+      (s) =>
+        !s.archived &&
+        (data.subject_groups ?? []).some(
+          (link) => link.group_id === nextGroup && link.subject_id === s.id,
+        ),
+    );
+    setGroup(nextGroup);
+    setSubject(
+      availableSubjects.find((s) => s.id === subject)?.id ||
+        availableSubjects[0]?.id ||
+        0,
+    );
+  }, [data, role, group, subject]);
   useEffect(() => {
     if (notice) {
       const t = setTimeout(() => setNotice(""), 4000);
@@ -222,7 +258,14 @@ function App() {
   };
   const teacher = me.teacher || me.root;
   const groups = data.groups.filter((g) => !g.archived);
-  const subjects = data.subjects.filter((s) => !s.archived);
+  const bound = (subjectID: number, groupID: number) =>
+    (data.subject_groups ?? []).some(
+      (link) => link.subject_id === subjectID && link.group_id === groupID,
+    );
+  const subjects = data.subjects.filter(
+    (s) =>
+      !s.archived && (teacher || (!!me.group_id && bound(s.id, me.group_id))),
+  );
   const groupName = (id: number | null) =>
     data.groups.find((g) => g.id === id)?.name || "Без группы";
   const subjectName = (id: number) =>
@@ -262,8 +305,73 @@ function App() {
     (role === "root" && !me.root) ||
     !me.name ||
     (role === "student" && !me.group_id);
+  function subjectForm(item?: State["subjects"][number]) {
+    if (!me.root) return;
+    if (!item && !groups.length) {
+      setError("Сначала создайте действующую группу, затем добавьте предмет.");
+      return;
+    }
+    const links = (data!.subject_groups ?? []).filter(
+      (link) => link.subject_id === item?.id,
+    );
+    const archivedIDs = links
+      .filter((link) =>
+        data!.groups.some((g) => g.id === link.group_id && g.archived),
+      )
+      .map((link) => link.group_id);
+    openForm(
+      item ? "Редактирование предмета" : "Новый предмет",
+      [
+        { name: "name", label: "Название", value: item?.name, required: true },
+        {
+          name: "groups",
+          label: "Группы предмета",
+          type: "checkboxes",
+          value: links
+            .filter((link) => groups.some((g) => g.id === link.group_id))
+            .map((link) => link.group_id)
+            .join(","),
+          options: groups.map((g) => ({ value: g.id, label: g.name })),
+          required: !item,
+        },
+        ...(item
+          ? [
+              {
+                name: "archive",
+                label: "Статус",
+                value: String(item.archived),
+                options: [
+                  { value: "false", label: "Действует" },
+                  { value: "true", label: "В архиве" },
+                ],
+              },
+            ]
+          : []),
+      ],
+      (values) => ({
+        kind: "subject",
+        ...(item ? { id: item.id, enabled: values.archive === "true" } : {}),
+        name: values.name,
+        group_ids: [
+          ...values.groups.split(",").filter(Boolean).map(Number),
+          ...archivedIDs,
+        ],
+      }),
+      archivedIDs.length
+        ? `Связи с архивными группами сохраняются: ${archivedIDs.map(groupName).join(", ")}.`
+        : "Выберите группы, в которых изучается предмет. Удалить связь можно только без действующих работ и событий.",
+    );
+  }
   function eventForm() {
-    const available = subjects;
+    const available = subjects.filter((s) =>
+      groups.some((g) => bound(s.id, g.id)),
+    );
+    if (!available.length) {
+      setError(
+        "Нет предметов с действующими группами. Попросите администратора назначить группы предмету.",
+      );
+      return;
+    }
     openForm(
       "Новое событие",
       [
@@ -277,7 +385,11 @@ function App() {
           name: "groups",
           label: "Группы (можно выбрать несколько)",
           type: "multi",
-          options: groups.map((g) => ({ value: g.id, label: g.name })),
+          value: "",
+          optionsFor: (values) =>
+            groups
+              .filter((g) => bound(Number(values.subject), g.id))
+              .map((g) => ({ value: g.id, label: g.name })),
           required: true,
         },
         {
@@ -307,7 +419,7 @@ function App() {
         kind: "event_create",
         name: v.name,
         subject_id: Number(v.subject),
-        group_ids: v.groups.split(",").map(Number),
+        group_ids: v.groups.split(",").filter(Boolean).map(Number),
         starts_at: new Date(v.starts + ":00+03:00").toISOString(),
         room: v.room,
         duration: Number(v.duration),
@@ -317,6 +429,13 @@ function App() {
     );
   }
   function labForm(l?: Lab) {
+    if (
+      !teacher ||
+      !currentSubject ||
+      !currentGroup ||
+      (l && (l.subject_id !== currentSubject || l.group_id !== currentGroup))
+    )
+      return;
     openForm(
       l ? "Редактировать работу" : "Новая лабораторная",
       [
@@ -407,6 +526,17 @@ function App() {
     version: number,
     retryKey?: string,
   ) {
+    const work = data!.labs.find((item) => item.id === lab);
+    if (
+      !teacher ||
+      !work ||
+      work.archived ||
+      !bound(work.subject_id, work.group_id) ||
+      !groups.some((g) => g.id === work.group_id) ||
+      !subjects.some((s) => s.id === work.subject_id) ||
+      !data!.users.some((u) => u.id === user && u.group_id === work.group_id)
+    )
+      return;
     const cell = user + "-" + lab;
     if (gradeLocks.current.has(cell)) return;
     gradeLocks.current.add(cell);
@@ -492,8 +622,15 @@ function App() {
   const accessibleGroups = groups.filter(
     (g) => teacher || g.id === me.group_id,
   );
-  const currentGroup = group || me.group_id || accessibleGroups[0]?.id || 0;
-  const currentSubject = subject || subjects[0]?.id || 0;
+  const currentGroup = accessibleGroups.some((g) => g.id === group)
+    ? group
+    : accessibleGroups.find((g) => g.id === me.group_id)?.id ||
+      accessibleGroups[0]?.id ||
+      0;
+  const groupSubjects = subjects.filter((s) => bound(s.id, currentGroup));
+  const currentSubject = groupSubjects.some((s) => s.id === subject)
+    ? subject
+    : groupSubjects[0]?.id || 0;
   const canGrade = teacher;
   const rootMode = role === "root" && !!me.root;
   const mine = data.entries.filter((e) => e.user_id === me.id && active(e));
@@ -708,8 +845,23 @@ function App() {
                     action={action}
                     openForm={openForm}
                     grades={() => {
-                      setGroup(selected.group_ids[0]);
+                      const targetGroup = selected.group_ids.find(
+                        (id) =>
+                          accessibleGroups.some((g) => g.id === id) &&
+                          bound(selected.subject_id, id),
+                      );
+                      if (
+                        !targetGroup ||
+                        !subjects.some((s) => s.id === selected.subject_id)
+                      ) {
+                        setError(
+                          "Ведомость события недоступна: предмет или группа в архиве либо предмет больше не назначен группе. Сохранённые данные не удалены.",
+                        );
+                        return;
+                      }
+                      setGroup(targetGroup);
                       setSubject(selected.subject_id);
+                      setShowStatistics(false);
                       setEventID(undefined);
                       setTab("grades");
                     }}
@@ -872,8 +1024,22 @@ function App() {
                       <select
                         aria-label="Группа"
                         value={currentGroup}
-                        onChange={(e) => setGroup(Number(e.target.value))}
+                        onChange={(e) => {
+                          const nextGroup = Number(e.target.value);
+                          setGroup(nextGroup);
+                          setSubject(
+                            subjects
+                              .filter((s) => bound(s.id, nextGroup))
+                              .find((s) => s.id === currentSubject)?.id ||
+                              subjects.find((s) => bound(s.id, nextGroup))
+                                ?.id ||
+                              0,
+                          );
+                        }}
                       >
+                        {!accessibleGroups.length && (
+                          <option value={0}>Нет действующих групп</option>
+                        )}
                         {accessibleGroups.map((g) => (
                           <option key={g.id} value={g.id}>
                             {g.name}
@@ -888,7 +1054,10 @@ function App() {
                         value={currentSubject}
                         onChange={(e) => setSubject(Number(e.target.value))}
                       >
-                        {subjects.map((s) => (
+                        {!groupSubjects.length && (
+                          <option value={0}>Нет назначенных предметов</option>
+                        )}
+                        {groupSubjects.map((s) => (
                           <option key={s.id} value={s.id}>
                             {s.name}
                           </option>
@@ -901,7 +1070,12 @@ function App() {
                         : "Сохранено"}
                     </span>
                   </div>
-                  {showStatistics && canGrade ? (
+                  {!currentSubject ? (
+                    <Empty
+                      title="Нет предметов для этой группы"
+                      text="Администратор должен назначить группе предмет в разделе «Управление»."
+                    />
+                  ) : showStatistics && canGrade ? (
                     <GradeStatisticsPanel
                       key={`${currentGroup}-${currentSubject}`}
                       statistics={data.grade_statistics?.find(
@@ -1147,19 +1321,21 @@ function App() {
                                 : "Добавить предмет"
                             }
                             onClick={() =>
-                              openForm(
-                                kind === "group"
-                                  ? "Новая группа"
-                                  : "Новый предмет",
-                                [
-                                  {
-                                    name: "name",
-                                    label: "Название",
-                                    required: true,
-                                  },
-                                ],
-                                (v) => ({ kind, name: v.name }),
-                              )
+                              kind === "subject"
+                                ? subjectForm()
+                                : openForm(
+                                    kind === "group"
+                                      ? "Новая группа"
+                                      : "Новый предмет",
+                                    [
+                                      {
+                                        name: "name",
+                                        label: "Название",
+                                        required: true,
+                                      },
+                                    ],
+                                    (v) => ({ kind, name: v.name }),
+                                  )
                             }
                           >
                             <Plus size={18} />
@@ -1171,32 +1347,40 @@ function App() {
                               className="admin-row"
                               key={v.id}
                               onClick={() =>
-                                openForm(
-                                  "Редактирование",
-                                  [
-                                    {
-                                      name: "name",
-                                      label: "Название",
-                                      value: v.name,
-                                      required: true,
-                                    },
-                                    {
-                                      name: "archive",
-                                      label: "Статус",
-                                      value: String(v.archived),
-                                      options: [
-                                        { value: "false", label: "Действует" },
-                                        { value: "true", label: "В архиве" },
+                                kind === "subject"
+                                  ? subjectForm(v)
+                                  : openForm(
+                                      "Редактирование",
+                                      [
+                                        {
+                                          name: "name",
+                                          label: "Название",
+                                          value: v.name,
+                                          required: true,
+                                        },
+                                        {
+                                          name: "archive",
+                                          label: "Статус",
+                                          value: String(v.archived),
+                                          options: [
+                                            {
+                                              value: "false",
+                                              label: "Действует",
+                                            },
+                                            {
+                                              value: "true",
+                                              label: "В архиве",
+                                            },
+                                          ],
+                                        },
                                       ],
-                                    },
-                                  ],
-                                  (x) => ({
-                                    kind,
-                                    id: v.id,
-                                    name: x.name,
-                                    enabled: x.archive === "true",
-                                  }),
-                                )
+                                      (x) => ({
+                                        kind,
+                                        id: v.id,
+                                        name: x.name,
+                                        enabled: x.archive === "true",
+                                      }),
+                                    )
                               }
                             >
                               <span>
@@ -1205,6 +1389,20 @@ function App() {
                                   #{v.id}
                                   {v.archived ? " · архив" : ""}
                                 </small>
+                                {kind === "subject" && (
+                                  <small>
+                                    Группы:{" "}
+                                    {(data.subject_groups ?? [])
+                                      .filter(
+                                        (link) => link.subject_id === v.id,
+                                      )
+                                      .map(
+                                        (link) =>
+                                          `${groupName(link.group_id)}${data.groups.find((g) => g.id === link.group_id)?.archived ? " (архив)" : ""}`,
+                                      )
+                                      .join(", ") || "не назначены"}
+                                  </small>
+                                )}
                               </span>
                               <ChevronRight size={16} />
                             </button>
@@ -1441,12 +1639,36 @@ function FormModal({ modal, close }: { modal: Modal; close: () => void }) {
     Object.fromEntries(
       modal.fields.map((f) => [
         f.name,
-        String(f.value ?? f.options?.[0]?.value ?? ""),
+        String(
+          f.value ??
+            (f.type === "multi" || f.type === "checkboxes"
+              ? ""
+              : f.options?.[0]?.value) ??
+            "",
+        ),
       ]),
     ),
   );
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const options = (field: Field, values = v) =>
+    field.optionsFor?.(values) ?? field.options;
+  const change = (name: string, value: string) => {
+    setV((previous) => {
+      const next = { ...previous, [name]: value };
+      for (const field of modal.fields) {
+        if (!field.optionsFor) continue;
+        const allowed = new Set(
+          field.optionsFor(next).map((option) => String(option.value)),
+        );
+        next[field.name] = next[field.name]
+          .split(",")
+          .filter((id) => allowed.has(id))
+          .join(",");
+      }
+      return next;
+    });
+  };
   return (
     <div
       className="modal-backdrop"
@@ -1473,6 +1695,16 @@ function FormModal({ modal, close }: { modal: Modal; close: () => void }) {
             setBusy(true);
             setErr("");
             try {
+              for (const field of modal.fields) {
+                if (
+                  field.required &&
+                  (field.type === "multi" || field.type === "checkboxes") &&
+                  !v[field.name]
+                )
+                  throw new Error(
+                    `Выберите хотя бы одну группу: ${field.label}`,
+                  );
+              }
               await modal.submit(v);
               close();
             } catch (e) {
@@ -1482,46 +1714,80 @@ function FormModal({ modal, close }: { modal: Modal; close: () => void }) {
             }
           }}
         >
-          {modal.fields.map((f) => (
-            <label key={f.name}>
-              {f.label}
-              {f.options ? (
-                <select
-                  aria-label={f.label}
-                  multiple={f.type === "multi"}
-                  value={f.type === "multi" ? v[f.name].split(",") : v[f.name]}
-                  onChange={(e) =>
-                    setV({
-                      ...v,
-                      [f.name]:
+          {modal.fields.map((f) =>
+            f.type === "checkboxes" ? (
+              <fieldset key={f.name} className="group-checkboxes">
+                <legend>{f.label}</legend>
+                {options(f)?.map((option) => (
+                  <label key={option.value}>
+                    <input
+                      type="checkbox"
+                      checked={v[f.name]
+                        .split(",")
+                        .includes(String(option.value))}
+                      onChange={(e) =>
+                        change(
+                          f.name,
+                          options(f)!
+                            .filter((o) =>
+                              String(o.value) === String(option.value)
+                                ? e.target.checked
+                                : v[f.name]
+                                    .split(",")
+                                    .includes(String(o.value)),
+                            )
+                            .map((o) => o.value)
+                            .join(","),
+                        )
+                      }
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+                {!options(f)?.length && <p>Нет действующих групп</p>}
+              </fieldset>
+            ) : (
+              <label key={f.name}>
+                {f.label}
+                {options(f) ? (
+                  <select
+                    aria-label={f.label}
+                    multiple={f.type === "multi"}
+                    value={
+                      f.type === "multi" ? v[f.name].split(",") : v[f.name]
+                    }
+                    onChange={(e) =>
+                      change(
+                        f.name,
                         f.type === "multi"
                           ? Array.from(e.target.selectedOptions)
                               .map((o) => o.value)
                               .join(",")
                           : e.target.value,
-                    })
-                  }
-                  required
-                >
-                  {f.options.map((o) => (
-                    <option value={o.value} key={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type={f.type || "text"}
-                  min={f.min}
-                  max={f.max}
-                  step={f.step}
-                  value={v[f.name]}
-                  onChange={(e) => setV({ ...v, [f.name]: e.target.value })}
-                  required={f.required}
-                />
-              )}
-            </label>
-          ))}
+                      )
+                    }
+                    required={f.type === "multi" ? f.required : true}
+                  >
+                    {options(f)!.map((o) => (
+                      <option value={o.value} key={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type={f.type || "text"}
+                    min={f.min}
+                    max={f.max}
+                    step={f.step}
+                    value={v[f.name]}
+                    onChange={(e) => change(f.name, e.target.value)}
+                    required={f.required}
+                  />
+                )}
+              </label>
+            ),
+          )}
           {err && (
             <div role="alert" className="alert">
               {err}

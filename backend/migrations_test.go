@@ -10,6 +10,7 @@ func TestMigrationsUpgradeAndCompatibility(t *testing.T) {
 	// Reconstruct the historical schema, with an existing lab and grade.
 	notificationETAExec(t, s, ctx, `ALTER TABLE labs DROP COLUMN weight, DROP COLUMN required;
 		DROP TABLE schema_migrations;
+		DROP TABLE subject_groups;
 		INSERT INTO labs(id,subject_id,group_id,number,name) VALUES(1,1,1,1,'Historical lab');
 		INSERT INTO grades(student_id,lab_id,value,author_id) VALUES(3001,1,4,1001);`)
 	if err := migrate(ctx, s.db); err != nil {
@@ -39,7 +40,7 @@ func TestMigrationsUpgradeAndCompatibility(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	notificationETACount(t, s, ctx, "SELECT count(*) FROM schema_migrations", 1)
+	notificationETACount(t, s, ctx, "SELECT count(*) FROM schema_migrations", 2)
 	notificationETACount(t, s, ctx, "SELECT count(*) FROM labs WHERE weight=0.123456789123456789 AND NOT required", 1)
 	// An old binary can still run its baseline and INSERT without new columns.
 	baseline, err := files.ReadFile("schema.sql")
@@ -67,6 +68,7 @@ func TestMigrationFailureIsAtomic(t *testing.T) {
 	// A conflicting column forces migration failure after the baseline has run.
 	notificationETAExec(t, s, ctx, `ALTER TABLE labs DROP COLUMN weight;
 		DROP TABLE schema_migrations;
+		DROP TABLE subject_groups;
 		DROP INDEX entries_event;`)
 	if err := migrate(ctx, s.db); err == nil {
 		t.Fatal("expected conflicting required column to fail migration")
@@ -79,5 +81,5 @@ func TestMigrationFailureIsAtomic(t *testing.T) {
 	if err := migrate(ctx, s.db); err != nil {
 		t.Fatal(err)
 	}
-	notificationETACount(t, s, ctx, "SELECT count(*) FROM schema_migrations", 1)
+	notificationETACount(t, s, ctx, "SELECT count(*) FROM schema_migrations", 2)
 }

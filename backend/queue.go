@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	"github.com/jackc/pgx/v5"
 	"math/big"
 	"sort"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type event struct {
@@ -32,12 +33,26 @@ func (s *server) queueCommand(ctx context.Context, tx pgx.Tx, uid int64, c comma
 	if c.Kind != "join" && c.Kind != "leave" && !owner {
 		return forbidden()
 	}
+	if !root && (c.Kind == "shuffle" || c.Kind == "move" || c.Kind == "remove") {
+		return forbidden()
+	}
+	if c.Kind == "strategy" && active(ev) && validStrategy(c.Strategy) && ev.Called && !root {
+		return forbidden()
+	}
+	// Inconsistent curricula must not advance the event, but users and owners
+	// must still be able to leave, stop registration, or close the event safely.
+	recovery := c.Kind == "leave" || (c.Kind == "event_action" && (c.Action == "cancel" || c.Action == "complete" || c.Action == "close"))
+	if !recovery && !exists(ctx, tx, `SELECT EXISTS(SELECT 1 FROM event_groups WHERE event_id=$1)
+ AND NOT EXISTS(SELECT 1 FROM event_groups eg JOIN events e ON e.id=eg.event_id
+ WHERE e.id=$1 AND NOT EXISTS(SELECT 1 FROM subject_groups sg WHERE sg.subject_id=e.subject_id AND sg.group_id=eg.group_id))`, ev.ID) {
+		return fail("Предмет не назначен всем группам события или группы не выбраны; восстановите учебный план")
+	}
 	switch c.Kind {
 	case "join":
 		if !active(ev) || !ev.Open {
 			return fail("Запись закрыта")
 		}
-		if !exists(ctx, tx, "SELECT EXISTS(SELECT 1 FROM users u JOIN event_groups g ON g.group_id=u.group_id WHERE u.id=$1 AND g.event_id=$2 AND u.name<>'')", uid, ev.ID) {
+		if !exists(ctx, tx, "SELECT EXISTS(SELECT 1 FROM users u JOIN event_groups g ON g.group_id=u.group_id JOIN events e ON e.id=g.event_id JOIN subject_groups sg ON sg.subject_id=e.subject_id AND sg.group_id=g.group_id WHERE u.id=$1 AND g.event_id=$2 AND u.name<>'')", uid, ev.ID) {
 			return fail("Событие недоступно вашей группе")
 		}
 		var score int
@@ -65,6 +80,7 @@ func (s *server) queueCommand(ctx context.Context, tx pgx.Tx, uid int64, c comma
 		if !active(ev) || !validName(c.Name) || c.StartsAt.IsZero() || c.Duration < 0 || c.Duration > 480 || len(c.Room) > 200 || len(c.Description) > 4000 {
 			return fail("Проверьте параметры события")
 		}
+
 		return exec("UPDATE events SET name=$2,starts_at=$3,room=$4,description=$5,duration=$6 WHERE id=$1", ev.ID, c.Name, c.StartsAt, c.Room, c.Description, c.Duration)
 	case "event_action":
 		if !active(ev) {
@@ -99,9 +115,7 @@ func (s *server) queueCommand(ctx context.Context, tx pgx.Tx, uid int64, c comma
 		if !active(ev) || !validStrategy(c.Strategy) {
 			return fail("Нельзя изменить стратегию")
 		}
-		if ev.Called && !root {
-			return forbidden()
-		}
+
 		if c.Strategy == ev.Strategy {
 			return nil
 		}
@@ -119,9 +133,6 @@ func (s *server) queueCommand(ctx context.Context, tx pgx.Tx, uid int64, c comma
 		sortEntries(items, c.Strategy)
 		return setOrder(ctx, tx, items)
 	case "shuffle":
-		if !root {
-			return forbidden()
-		}
 		if !active(ev) || ev.Strategy != "random" || ev.Shuffled || ev.Called {
 			return fail("Перемешивание недоступно")
 		}
@@ -191,17 +202,11 @@ func (s *server) queueCommand(ctx context.Context, tx pgx.Tx, uid int64, c comma
 		items = append(items, entry{ID: c.ID, Skipped: true})
 		return setOrder(ctx, tx, items)
 	case "remove":
-		if !root {
-			return forbidden()
-		}
 		if !active(ev) {
 			return fail("Событие закрыто")
 		}
 		return exec("UPDATE entries SET state='removed',ended_at=now() WHERE id=$1 AND event_id=$2 AND state IN ('waiting','called')", c.ID, ev.ID)
 	case "move":
-		if !root {
-			return forbidden()
-		}
 		if !active(ev) {
 			return fail("Событие закрыто")
 		}

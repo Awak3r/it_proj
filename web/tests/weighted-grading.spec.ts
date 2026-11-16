@@ -26,6 +26,7 @@ function snapshot(student = false): State {
     users: [teacher, pupil],
     groups: [{ id: 1, name: "Weighted group", archived: false }],
     subjects: [{ id: 1, name: "Weighted subject", archived: false }],
+    subject_groups: [{ subject_id: 1, group_id: 1 }],
     assignments: [{ teacher_id: 2001, subject_id: 1, group_id: 1 }],
     labs: [
       {

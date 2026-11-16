@@ -790,6 +790,40 @@ input[type="number"] {
   font-size: 12px;
   margin-bottom: 18px;
 }
+.group-checkboxes {
+  min-width: 0;
+  margin: 0 0 16px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+.group-checkboxes legend {
+  font-size: 12px;
+  color: var(--muted);
+}
+.group-checkboxes label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin: 0;
+  color: var(--text);
+  cursor: pointer;
+}
+.group-checkboxes input {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.group-checkboxes input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.group-checkboxes span {
+  overflow-wrap: anywhere;
+}
 .modal form > button {
   width: 100%;
   margin-top: 4px;

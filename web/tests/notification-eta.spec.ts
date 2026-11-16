@@ -11,6 +11,7 @@ function snapshot(): State {
     me,
     groups: [{ id: 1, name: "Synthetic group", archived: false }],
     subjects: [{ id: 1, name: "Synthetic subject", archived: false }],
+    subject_groups: [{ subject_id: 1, group_id: 1 }],
     users: [me],
     labs: [],
     grades: [],

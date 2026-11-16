@@ -70,6 +70,11 @@ func (s *server) exportGradebook(w http.ResponseWriter, r *http.Request, uid int
 		return
 	}
 
+	if err := requireCurriculum(ctx, tx, subjectID, groupID, false); err != nil {
+		writeError(w, err)
+		return
+	}
+
 	var labList []exportLab
 	rows, e := tx.Query(ctx, `
 		SELECT l.id,l.number,l.name,l.weight,l.weight::text,l.required,l.archived

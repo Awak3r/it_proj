@@ -36,6 +36,7 @@ func TestStatisticsRosterCountsAndAccess(t *testing.T) {
  UPDATE users SET group_id=1 WHERE id IN (2001,3001);
  INSERT INTO groups(id,name) VALUES(2,'Empty'),(3,'Optional only'),(4,'No labs');
  INSERT INTO subjects(id,name) VALUES(2,'Other subject');
+  INSERT INTO subject_groups VALUES(2,2),(2,3),(2,4);
  INSERT INTO users(id,name,group_id) VALUES(4001,'Optional student',3),(4002,'No labs student',4);
  INSERT INTO labs(id,subject_id,group_id,number,name,weight,required,archived) VALUES
  (1,1,1,1,'Required weighted',3,true,false),

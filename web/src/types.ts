@@ -97,10 +97,12 @@ export type Assignment = {
   group_id: number;
   teacher_id: number;
 };
+export type SubjectGroup = { subject_id: number; group_id: number };
 export type State = {
   me: User;
   groups: Group[];
   subjects: Group[];
+  subject_groups?: SubjectGroup[];
   users: User[];
   labs: Lab[];
   grades: Grade[];

@@ -23,11 +23,10 @@ cmd(1001, 'profile', name='Михаил', group_id=0)
 for name in ['М8О-201Б-25', 'М8О-202Б-25']:
     cmd(1001,'group',name=name)
 for name in ['Программирование', 'Математический анализ', 'Физика']:
-    cmd(1001,'subject',name=name)
+    cmd(1001,'subject',name=name,group_ids=[1])
 cmd(1001,'role',user_id=2001,enabled=True)
 cmd(2001,'profile',name='Алексей Викторович',group_id=0)
 for subject in range(1,4):
-
     for number,name in enumerate(['Основы и практика','Исследование методов','Итоговая работа'],1):
         cmd(2001,'lab',subject_id=subject,group_id=1,number=number,name=name)
 for user,name in [(3001,'Михаил Соколов'),(3002,'Анна Морозова'),(3003,'Даниил Волков')]:

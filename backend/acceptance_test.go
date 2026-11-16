@@ -210,7 +210,7 @@ func acceptanceSecondEvent(t *testing.T, s *server, ctx context.Context) {
 	t.Helper()
 	// Fixture event has an explicit ID; advance its sequence before API creation.
 	notificationETAExec(t, s, ctx, "SELECT setval(pg_get_serial_sequence('events','id'),(SELECT max(id) FROM events))")
-	acceptanceCommand(t, s, 2001, command{Kind: "event_create", Name: "Second event", SubjectID: 1, GroupIDs: []int64{1}, StartsAt: time.Now(), Strategy: "fifo"}, 200)
+	acceptanceCommand(t, s, 2001, command{Kind: "event_create", Name: "Second event", SubjectID: 1, GroupIDs: &[]int64{1}, StartsAt: time.Now(), Strategy: "fifo"}, 200)
 	acceptanceCommand(t, s, 2001, command{Kind: "event_action", EventID: 2, Action: "open"}, 200)
 	acceptanceCommand(t, s, 2001, command{Kind: "event_action", EventID: 2, Action: "start"}, 200)
 }
@@ -299,6 +299,7 @@ func TestAcceptanceScoreOrderOneThreeFive(t *testing.T) {
 			notificationETAExec(t, s, ctx, `
  INSERT INTO groups(id,name) VALUES(2,'Other group');
  INSERT INTO subjects(id,name) VALUES(2,'Other subject');
+  INSERT INTO subject_groups VALUES(2,1),(1,2);
  INSERT INTO labs(subject_id,group_id,number,name,archived) VALUES(1,1,6,'Archived',true),(2,1,1,'Other subject',false),(1,2,1,'Other group',false);
  INSERT INTO grades(student_id,lab_id,value,author_id) SELECT 3001,id,5,1001 FROM labs WHERE id>5;`)
 			acceptanceCommand(t, s, 2001, command{Kind: "strategy", EventID: 1, Strategy: strategy}, 200)
